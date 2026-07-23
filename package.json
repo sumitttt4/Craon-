@@ -1,0 +1,39 @@
+{
+  "name": "checking-3-6",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "oxlint app/page.tsx src/App.tsx src/index.css src/components/CraonExactHero.tsx src/components/Footer.tsx src/components/HeroDemo.tsx src/components/SmoothScroll.tsx src/components/VideoEdgeOverlay.tsx src/components/WireframeScene.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/three": "^0.185.1",
+    "framer-motion": "^12.42.2",
+    "geist": "^1.7.2",
+    "gsap": "^3.15.0",
+    "lenis": "^1.3.25",
+    "lucide-react": "^1.25.0",
+    "next": "^16.2.11",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "oxlint": "^1.71.0",
+    "typescript": "~6.0.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.22",
+    "sharp": "^0.35.3"
+  }
+}
