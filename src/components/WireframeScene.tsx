@@ -118,7 +118,7 @@ export default function WireframeScene() {
   return (
     <div className="pointer-events-none absolute inset-0">
       <Canvas
-        dpr={[1, 1.5]}
+        dpr={[1.5, 2]}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         camera={{ position: [0, 0, 8.8], fov: 44 }}
       >

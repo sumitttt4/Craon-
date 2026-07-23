@@ -116,7 +116,7 @@ export default function HeroDemo() {
         .to('.story-copy-2', { autoAlpha: 1, y: 0, duration: 0.35 })
         .to(
           '.edit-stack',
-          { rotateX: 7, rotateY: 24, xPercent: -48, scale: 0.78, duration: 1.15 },
+          { rotateX: 6, rotateY: 21, xPercent: -64, scale: 0.72, duration: 1.15 },
           '<',
         )
         .to(
@@ -132,7 +132,7 @@ export default function HeroDemo() {
         .fromTo(
           '.layer-grade',
           { z: 15, xPercent: 0, opacity: 0.3 },
-          { z: 190, xPercent: 8, opacity: 1, duration: 1.1 },
+          { z: 190, xPercent: -3, opacity: 1, duration: 1.1 },
           '<0.08',
         )
         .fromTo(
@@ -198,7 +198,7 @@ export default function HeroDemo() {
         />
 
         <StoryCopy
-          className="story-copy-2 lg:col-span-4 lg:col-start-9 lg:row-start-1"
+          className="story-copy-2 lg:col-span-3 lg:col-start-10 lg:row-start-1 lg:isolate lg:justify-self-end"
           icon={<Clapperboard size={16} />}
           label="Cinematic direction"
           title="Change the feeling."
@@ -269,12 +269,12 @@ export default function HeroDemo() {
               <div className="edit-layer layer-captions pointer-events-none absolute inset-[12%_8%_10%_16%] rounded-[20px] border border-dashed border-white/28 bg-transparent [backface-visibility:hidden]">
                 <div className="absolute left-1/2 top-0 h-full border-l border-dashed border-white/15" />
                 <div className="absolute left-[12%] right-[12%] top-[68%] border-t border-dashed border-white/15" />
-                <div className="absolute bottom-[16%] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/30 bg-black/80 px-4 py-2 text-sm font-extrabold text-white">
+                <div className="absolute left-1/2 top-[9%] -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/30 bg-black/80 px-4 py-2 text-sm font-extrabold text-white">
                   WORD PERFECT CAPTIONS
                 </div>
               </div>
 
-              <div className="edit-layer layer-grade absolute inset-[7%_-7%_7%_62%] overflow-hidden rounded-[18px] border border-white/22 bg-[#121211]/94 p-4 shadow-2xl backdrop-blur-xl [backface-visibility:hidden]">
+              <div className="edit-layer layer-grade absolute inset-[7%_0_7%_62%] overflow-hidden rounded-[18px] border border-white/22 bg-[#121211]/94 p-4 shadow-2xl backdrop-blur-xl [backface-visibility:hidden]">
                 <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-white/65">
                   <Sparkles size={14} className="text-[#ff683d]" />
                   CINEMATIC GRADE
