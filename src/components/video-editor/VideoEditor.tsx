@@ -141,6 +141,19 @@ const X = makeHugeIcon(Cancel01Icon);
 
 type AssetStatus = 'Ready' | 'Reading file' | 'Generating preview' | 'Extracting audio';
 
+type ViewerStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+type ViewerState = {
+  assetId: string | null;
+  status: ViewerStatus;
+};
+
+type ViewerPreview = {
+  assetId: string;
+  url: string;
+  time: number;
+};
+
 type EditorAsset = {
   id: string;
   name: string;
@@ -381,7 +394,8 @@ export default function VideoEditor() {
   }, [activeTab, assets.length]);
   const [playhead, setPlayhead] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [videoLoading, setVideoLoading] = useState(false);
+  const [viewerState, setViewerState] = useState<ViewerState>({ assetId: null, status: 'idle' });
+  const [previousPreview, setPreviousPreview] = useState<ViewerPreview | null>(null);
   const [draggingMedia, setDraggingMedia] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [aiState, setAiState] = useState<'idle' | 'processing' | 'complete'>('idle');
@@ -402,6 +416,11 @@ export default function VideoEditor() {
   const [timelineDropActive, setTimelineDropActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const activeViewerRef = useRef<{ assetId: string | null; url: string | null }>({ assetId: null, url: null });
+  const lastReadyPreviewRef = useRef<ViewerPreview | null>(null);
+  const previousPreviewRef = useRef<ViewerPreview | null>(null);
+  const viewerFallbackTimerRef = useRef<number | null>(null);
+  const viewerCrossfadeTimerRef = useRef<number | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
@@ -492,9 +511,13 @@ export default function VideoEditor() {
   );
 
   const activeAsset =
-    assets.find((asset) => asset.id === activeClipInfo?.clip.assetId) ??
     assets.find((asset) => asset.id === selectedAssetId) ??
+    assets.find((asset) => asset.id === activeClipInfo?.clip.assetId) ??
     assets[0];
+
+  const activeAssetId = activeAsset?.id ?? null;
+  const activeAssetUrl = activeAsset?.url ?? null;
+  activeViewerRef.current = { assetId: activeAssetId, url: activeAssetUrl };
 
   const playbackDuration = projectDuration || activeAsset?.duration || 0;
   const pendingDeleteAsset = assets.find((asset) => asset.id === pendingDeleteAssetId);
@@ -569,28 +592,103 @@ export default function VideoEditor() {
     }
   }, [activeAsset, activeClipInfo, playhead, playing]);
 
+  const clearViewerTimers = useCallback(() => {
+    if (viewerFallbackTimerRef.current !== null) {
+      window.clearTimeout(viewerFallbackTimerRef.current);
+      viewerFallbackTimerRef.current = null;
+    }
+    if (viewerCrossfadeTimerRef.current !== null) {
+      window.clearTimeout(viewerCrossfadeTimerRef.current);
+      viewerCrossfadeTimerRef.current = null;
+    }
+  }, []);
+
+  const setViewerPreviousPreview = useCallback((preview: ViewerPreview | null) => {
+    previousPreviewRef.current = preview;
+    setPreviousPreview(preview);
+  }, []);
+
+  const isCurrentViewerVideo = useCallback((video: HTMLVideoElement, assetId: string, url: string) => {
+    const current = activeViewerRef.current;
+    return (
+      current.assetId === assetId &&
+      current.url === url &&
+      video.dataset.viewerAssetId === assetId &&
+      video.getAttribute('src') === url &&
+      (video.currentSrc === '' || video.currentSrc === url)
+    );
+  }, []);
+
+  const setCurrentViewerStatus = useCallback((assetId: string, status: ViewerStatus) => {
+    setViewerState((current) =>
+      current.assetId === assetId ? { assetId, status } : current,
+    );
+  }, []);
+
+  const markViewerReady = useCallback(
+    (assetId: string, url: string, time = 0) => {
+      if (activeViewerRef.current.assetId !== assetId || activeViewerRef.current.url !== url) return;
+      if (viewerFallbackTimerRef.current !== null) {
+        window.clearTimeout(viewerFallbackTimerRef.current);
+        viewerFallbackTimerRef.current = null;
+      }
+      lastReadyPreviewRef.current = { assetId, url, time };
+      setViewerState((current) => {
+        if (current.assetId !== assetId || current.status === 'error') return current;
+        return { assetId, status: 'ready' };
+      });
+      if (previousPreviewRef.current) {
+        if (viewerCrossfadeTimerRef.current !== null) window.clearTimeout(viewerCrossfadeTimerRef.current);
+        viewerCrossfadeTimerRef.current = window.setTimeout(() => {
+          if (activeViewerRef.current.assetId === assetId && activeViewerRef.current.url === url) {
+            setViewerPreviousPreview(null);
+          }
+          viewerCrossfadeTimerRef.current = null;
+        }, 150);
+      }
+    },
+    [setViewerPreviousPreview],
+  );
+
   useEffect(() => {
-    if (!activeAsset) {
-      setVideoLoading(false);
+    clearViewerTimers();
+    if (!activeAssetId || !activeAssetUrl) {
+      setViewerState({ assetId: null, status: 'idle' });
+      setViewerPreviousPreview(null);
       return;
     }
+
+    const priorPreview = lastReadyPreviewRef.current;
+    if (priorPreview && priorPreview.assetId !== activeAssetId) setViewerPreviousPreview(priorPreview);
+    setViewerState({ assetId: activeAssetId, status: 'loading' });
+
     const video = videoRef.current;
-    if (video && video.readyState >= 2) {
-      setVideoLoading(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setVideoLoading(false), 500);
-    return () => window.clearTimeout(timer);
-  }, [activeAsset?.id, activeAsset?.url]);
+    if (video) video.load();
+
+    viewerFallbackTimerRef.current = window.setTimeout(() => {
+      const currentVideo = videoRef.current;
+      if (
+        currentVideo &&
+        isCurrentViewerVideo(currentVideo, activeAssetId, activeAssetUrl) &&
+        currentVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
+        markViewerReady(activeAssetId, activeAssetUrl, currentVideo.currentTime);
+      }
+      viewerFallbackTimerRef.current = null;
+    }, 4000);
+
+    return clearViewerTimers;
+  }, [activeAssetId, activeAssetUrl, clearViewerTimers, isCurrentViewerVideo, markViewerReady, setViewerPreviousPreview]);
 
   useEffect(() => {
     const urls = objectUrlsRef.current;
     const timers = processingTimersRef.current;
     return () => {
+      clearViewerTimers();
       urls.forEach((url) => URL.revokeObjectURL(url));
       timers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, []);
+  }, [clearViewerTimers]);
 
   const announce = useCallback((message: string) => setToast(message), []);
 
@@ -732,7 +830,6 @@ export default function VideoEditor() {
     if (accepted.length) {
       setAssets((current) => [...current, ...accepted]);
       setSelectedAssetId(accepted[0].id);
-      setVideoLoading(true);
       setActiveTab('assets');
       setProjectName((current) =>
         current === 'Untitled video' ? accepted[0].name.replace(/\.[^.]+$/, '') : current,
@@ -755,7 +852,6 @@ export default function VideoEditor() {
 
   const previewAssetFullscreen = useCallback((assetId: string) => {
     setSelectedAssetId(assetId);
-    setVideoLoading(true);
     setPlayhead(0);
     setPlaying(true);
 
@@ -804,6 +900,8 @@ export default function VideoEditor() {
   const removeAsset = (assetId: string) => {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
+    if (lastReadyPreviewRef.current?.assetId === assetId) lastReadyPreviewRef.current = null;
+    if (previousPreviewRef.current?.assetId === assetId) setViewerPreviousPreview(null);
     if (asset.objectUrl) URL.revokeObjectURL(asset.url);
     objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== asset.url);
     const remainingAssets = assets.filter((item) => item.id !== assetId);
@@ -1255,7 +1353,6 @@ export default function VideoEditor() {
                                   view={assetView}
                                   onSelect={() => {
                                     setSelectedAssetId(asset.id);
-                                    setVideoLoading(true);
                                     const clipEntry = clipStarts.find((c) => c.clip.assetId === asset.id);
                                     if (clipEntry) {
                                       setPlayhead(clipEntry.start);
@@ -1333,28 +1430,86 @@ export default function VideoEditor() {
                             <>
                               <video
                                 ref={videoRef}
-                                key={activeAsset.id}
+                                data-viewer-asset-id={activeAsset.id}
                                 src={activeAsset.url}
                                 muted={muted}
                                 playsInline
                                 preload="auto"
-                                onLoadStart={() => setVideoLoading(true)}
-                                onLoadedMetadata={(event) => {
-                                  setVideoLoading(false);
-                                  updateAssetDuration(activeAsset.id, event.currentTarget.duration);
+                                onLoadStart={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    setCurrentViewerStatus(activeAsset.id, 'loading');
+                                  }
                                 }}
-                                onLoadedData={() => setVideoLoading(false)}
-                                onCanPlay={() => setVideoLoading(false)}
-                                onCanPlayThrough={() => setVideoLoading(false)}
-                                onPlaying={() => setVideoLoading(false)}
-                                onError={() => setVideoLoading(false)}
+                                onLoadedMetadata={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    updateAssetDuration(activeAsset.id, event.currentTarget.duration);
+                                  }
+                                }}
+                                onLoadedData={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    markViewerReady(activeAsset.id, activeAsset.url, event.currentTarget.currentTime);
+                                  }
+                                }}
+                                onCanPlay={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    markViewerReady(activeAsset.id, activeAsset.url, event.currentTarget.currentTime);
+                                  }
+                                }}
+                                onPlaying={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    markViewerReady(activeAsset.id, activeAsset.url, event.currentTarget.currentTime);
+                                  }
+                                }}
+                                onTimeUpdate={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    lastReadyPreviewRef.current = {
+                                      assetId: activeAsset.id,
+                                      url: activeAsset.url,
+                                      time: event.currentTarget.currentTime,
+                                    };
+                                  }
+                                }}
+                                onError={(event) => {
+                                  if (isCurrentViewerVideo(event.currentTarget, activeAsset.id, activeAsset.url)) {
+                                    setCurrentViewerStatus(activeAsset.id, 'error');
+                                  }
+                                }}
                                 onEnded={() => setPlaying(false)}
-                                className={fitMode === 'fit' ? styles.videoFit : styles.videoOriginal}
+                                className={`${fitMode === 'fit' ? styles.videoFit : styles.videoOriginal} ${styles.viewerCurrentVideo} ${viewerState.assetId === activeAsset.id && viewerState.status === 'ready' ? styles.viewerCurrentVideoReady : styles.viewerCurrentVideoLoading}`}
                               />
-                              {videoLoading && (
+                              {previousPreview && previousPreview.assetId !== activeAsset.id && (
+                                <video
+                                  key={previousPreview.assetId}
+                                  src={previousPreview.url}
+                                  muted
+                                  playsInline
+                                  preload="auto"
+                                  aria-hidden="true"
+                                  tabIndex={-1}
+                                  onLoadedMetadata={(event) => {
+                                    event.currentTarget.currentTime = previousPreview.time;
+                                  }}
+                                  className={`${fitMode === 'fit' ? styles.videoFit : styles.videoOriginal} ${styles.viewerPreviousVideo}`}
+                                />
+                              )}
+                              {viewerState.assetId === activeAsset.id && viewerState.status === 'loading' && (
                                 <div className={styles.viewerLoading}>
                                   <Loader2 size={19} />
                                   <span>Preparing preview</span>
+                                </div>
+                              )}
+                              {viewerState.assetId === activeAsset.id && viewerState.status === 'error' && (
+                                <div className={styles.viewerPreviewError}>
+                                  <span>Preview unavailable</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCurrentViewerStatus(activeAsset.id, 'loading');
+                                      videoRef.current?.load();
+                                    }}
+                                  >
+                                    Retry
+                                  </button>
                                 </div>
                               )}
 

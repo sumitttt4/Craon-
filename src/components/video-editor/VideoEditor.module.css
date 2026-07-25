@@ -1532,6 +1532,31 @@
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.32);
 }
 
+.viewerCurrentVideo,
+.viewerPreviousVideo {
+  grid-area: 1 / 1;
+}
+
+.viewerCurrentVideo {
+  position: relative;
+  z-index: 2;
+  transition: opacity 150ms ease;
+}
+
+.viewerCurrentVideoLoading {
+  opacity: 0;
+}
+
+.viewerCurrentVideoReady {
+  opacity: 1;
+}
+
+.viewerPreviousVideo {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .videoFit {
   width: min(88%, 980px);
   max-height: 86%;
@@ -1546,6 +1571,7 @@
 
 .viewerLoading {
   position: absolute;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1559,6 +1585,29 @@
 
 .viewerLoading svg {
   color: var(--accent);
+}
+
+.viewerPreviewError {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(18, 19, 18, 0.92);
+  color: var(--secondary);
+  font-size: 10px;
+}
+
+.viewerPreviewError button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
 }
 
 .viewerOverlay {
