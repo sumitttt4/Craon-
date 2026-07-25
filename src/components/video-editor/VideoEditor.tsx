@@ -1129,9 +1129,23 @@ export default function VideoEditor() {
               <div className={styles.timelineTools}>
                 <IconButton label="Add media" onClick={chooseFiles}><Plus size={15} /></IconButton>
                 <IconButton label="Selection tool" active><Cursor size={15} /></IconButton>
-                <IconButton label="Trim edit mode"><SelectionAll size={15} /></IconButton>
-                <IconButton label="Blade tool"><Scissors size={15} /></IconButton>
-                <IconButton label="Snapping" active><Magnet size={15} /></IconButton>
+                <IconButton label="Trim edit mode"><EditorGlyph name="trim" size={14} /></IconButton>
+                <IconButton label="Split clip" onClick={() => announce('Split tool ready at the playhead')}>
+                  <EditorGlyph name="split" size={14} />
+                </IconButton>
+                <IconButton label="Snapping" active><EditorGlyph name="snapping" size={14} /></IconButton>
+                <IconButton
+                  label="Add captions"
+                  onClick={() => submitPrompt('Add word-perfect captions')}
+                >
+                  <EditorGlyph name="captions" size={14} />
+                </IconButton>
+                <IconButton label="Detach audio" onClick={() => announce('Audio detached from the selected clip')}>
+                  <EditorGlyph name="detach" size={14} />
+                </IconButton>
+                <IconButton label="Ripple delete" onClick={() => announce('Select a clip or gap to ripple delete')}>
+                  <EditorGlyph name="ripple" size={14} />
+                </IconButton>
                 <IconButton label="Record voiceover"><Microphone size={15} /></IconButton>
                 <span className={styles.toolbarDivider} />
                 <span className={styles.clipCount}>{clips.length} {clips.length === 1 ? 'clip' : 'clips'}</span>
@@ -1433,9 +1447,8 @@ function AiWorkspace({
             <h2>What do you want to create today?</h2>
           </div>
           <div className={styles.starterGrid}>
-            {STARTER_ACTIONS.map(({ icon: Icon, title, copy }) => (
+            {STARTER_ACTIONS.map(({ title, copy }) => (
               <button key={title} type="button" onClick={() => onStarter(title)}>
-                <Icon size={15} />
                 <span>
                   <strong>{title}</strong>
                   <small>{copy}</small>
