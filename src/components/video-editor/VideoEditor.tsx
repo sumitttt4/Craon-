@@ -570,6 +570,20 @@ export default function VideoEditor() {
   }, [activeAsset, activeClipInfo, playhead, playing]);
 
   useEffect(() => {
+    if (!activeAsset) {
+      setVideoLoading(false);
+      return;
+    }
+    const video = videoRef.current;
+    if (video && video.readyState >= 2) {
+      setVideoLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setVideoLoading(false), 500);
+    return () => window.clearTimeout(timer);
+  }, [activeAsset?.id, activeAsset?.url]);
+
+  useEffect(() => {
     const urls = objectUrlsRef.current;
     const timers = processingTimersRef.current;
     return () => {
@@ -1242,6 +1256,11 @@ export default function VideoEditor() {
                                   onSelect={() => {
                                     setSelectedAssetId(asset.id);
                                     setVideoLoading(true);
+                                    const clipEntry = clipStarts.find((c) => c.clip.assetId === asset.id);
+                                    if (clipEntry) {
+                                      setPlayhead(clipEntry.start);
+                                      setPlaying(false);
+                                    }
                                   }}
                                   onPreviewFullscreen={() => previewAssetFullscreen(asset.id)}
                                   onAdd={() => addAssetToTimeline(asset.id)}
@@ -1326,6 +1345,9 @@ export default function VideoEditor() {
                                 }}
                                 onLoadedData={() => setVideoLoading(false)}
                                 onCanPlay={() => setVideoLoading(false)}
+                                onCanPlayThrough={() => setVideoLoading(false)}
+                                onPlaying={() => setVideoLoading(false)}
+                                onError={() => setVideoLoading(false)}
                                 onEnded={() => setPlaying(false)}
                                 className={fitMode === 'fit' ? styles.videoFit : styles.videoOriginal}
                               />

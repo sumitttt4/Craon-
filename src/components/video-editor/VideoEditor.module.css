@@ -2525,65 +2525,102 @@
   color: var(--text);
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(6px);
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.exportModal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 99995;
+  width: min(480px, 92vw);
+  background: #161716 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
 .deleteAssetModal {
-  width: min(448px, 100%);
-  border-radius: 12px;
-  background: var(--panel-raised);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+  width: min(440px, 92vw);
+  background: #161716 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
 }
 
 .deleteDescription {
   margin: 0;
-  padding: 17px 16px 20px;
-  color: var(--secondary);
-  font-size: 12px;
+  padding: 18px 20px 22px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
   line-height: 1.55;
+  background: #161716;
 }
 
 .deleteDescription strong {
-  color: var(--text);
-  font-weight: 560;
+  color: #F3F3EF;
+  font-weight: 600;
 }
 
 .deleteModalFooter {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #121312;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .cancelDelete {
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel-bg);
-  color: var(--text);
-  font-size: 12px;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #F3F3EF !important;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 140ms ease;
 }
 
 .cancelDelete:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .confirmDelete {
-  height: 32px;
-  padding: 0 14px;
+  height: 34px;
+  padding: 0 16px;
   border: 1px solid #DC2626 !important;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #DC2626 !important;
   color: #FFFFFF !important;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.35);
   transition: all 140ms ease;
 }
 
 .confirmDelete:hover {
   border-color: #EF4444 !important;
   background: #EF4444 !important;
+  transform: translateY(-1px);
 }
 
 .toast {
