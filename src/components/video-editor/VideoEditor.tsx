@@ -2,55 +2,66 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  Bell,
-  CaretDown as ChevronDown,
-  CaretLeft,
-  CaretRight as ChevronRight,
-  ChatCircle as MessageCircle,
-  Check,
-  CircleNotch as Loader2,
-  ClockCounterClockwise as History,
-  Copy,
-  CornersOut as Maximize2,
-  Cursor,
-  DotsSixVertical as GripVertical,
-  DotsThree as MoreHorizontal,
-  DownloadSimple as Download,
-  Eye,
-  EyeSlash,
-  FilmStrip as Film,
-  FolderOpen,
-  GridFour as Grid2X2,
-  Image as ImageIcon,
-  MagnifyingGlass as Search,
-  MagnifyingGlassMinus as ZoomOut,
-  MagnifyingGlassPlus as ZoomIn,
-  Microphone,
-  List,
-  PaperPlaneTilt as Send,
-  Pause,
-  Play,
-  Plus,
-  Question as CircleHelp,
-  ArrowUUpRight as Redo2,
-  ArrowCounterClockwise as RotateCcw,
-  ShareNetwork as Share2,
-  Sidebar as PanelLeft,
-  SkipBack,
-  SkipForward,
-  Sliders as Settings2,
-  SlidersHorizontal,
-  Sparkle as Sparkles,
-  SpeakerHigh as Volume2,
-  SpeakerSlash as VolumeX,
-  SpeakerSimpleX,
-  Trash as Trash2,
-  ArrowUUpLeft as Undo2,
-  UploadSimple as Upload,
-  Waveform as Music2,
-  X,
-} from '@phosphor-icons/react';
+  Add01Icon,
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowLeft02Icon,
+  ArrowRight01Icon,
+  ArrowRight02Icon,
+  ArrowUpLeft01Icon,
+  ArrowUpRight01Icon,
+  AudioWaveformIcon,
+  BellIcon,
+  Cancel01Icon,
+  Clock01Icon,
+  Copy01Icon,
+  Cursor01Icon,
+  Delete02Icon,
+  Download01Icon,
+  DragDropIcon,
+  EyeIcon,
+  Film01Icon,
+  Folder01Icon,
+  FullScreenIcon,
+  GridViewIcon,
+  HelpCircleIcon,
+  Image01Icon,
+  Layers01Icon,
+  ListViewIcon,
+  Loading03Icon,
+  Magnet01Icon,
+  Message01Icon,
+  Mic01Icon,
+  MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
+  Rotate01Icon,
+  ScissorIcon,
+  Search01Icon,
+  SearchMinusIcon,
+  SentIcon,
+  Settings01Icon,
+  Share01Icon,
+  SidebarLeftIcon,
+  SlidersHorizontalIcon,
+  SparklesIcon,
+  SplitIcon,
+  TextIcon,
+  Tick02Icon,
+  Unlink01Icon,
+  Upload01Icon,
+  Video01Icon,
+  ViewOffIcon,
+  VolumeHighIcon,
+  VolumeMute01Icon,
+  VolumeOffIcon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
+} from '@hugeicons/core-free-icons';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import {
   type ChangeEvent,
   type CSSProperties,
@@ -63,6 +74,61 @@ import {
   useState,
 } from 'react';
 import styles from './VideoEditor.module.css';
+
+type HugeIconProps = { size?: number; className?: string };
+
+function makeHugeIcon(icon: typeof BellIcon) {
+  return function EditorHugeIcon({ size = 16, className }: HugeIconProps) {
+    return <HugeiconsIcon icon={icon} size={size} strokeWidth={1.5} className={className} aria-hidden="true" />;
+  };
+}
+
+const Bell = makeHugeIcon(BellIcon);
+const ChevronDown = makeHugeIcon(ArrowDown01Icon);
+const CaretLeft = makeHugeIcon(ArrowLeft01Icon);
+const ChevronRight = makeHugeIcon(ArrowRight01Icon);
+const MessageCircle = makeHugeIcon(Message01Icon);
+const Check = makeHugeIcon(Tick02Icon);
+const Loader2 = makeHugeIcon(Loading03Icon);
+const History = makeHugeIcon(Clock01Icon);
+const Copy = makeHugeIcon(Copy01Icon);
+const Maximize2 = makeHugeIcon(FullScreenIcon);
+const Cursor = makeHugeIcon(Cursor01Icon);
+const GripVertical = makeHugeIcon(DragDropIcon);
+const MoreHorizontal = makeHugeIcon(MoreHorizontalIcon);
+const Eye = makeHugeIcon(EyeIcon);
+const EyeSlash = makeHugeIcon(ViewOffIcon);
+const Film = makeHugeIcon(Film01Icon);
+const FolderOpen = makeHugeIcon(Folder01Icon);
+const Grid2X2 = makeHugeIcon(GridViewIcon);
+const ImageIcon = makeHugeIcon(Image01Icon);
+const Search = makeHugeIcon(Search01Icon);
+const ZoomOut = makeHugeIcon(ZoomOutAreaIcon);
+const ZoomIn = makeHugeIcon(ZoomInAreaIcon);
+const Microphone = makeHugeIcon(Mic01Icon);
+const List = makeHugeIcon(ListViewIcon);
+const Send = makeHugeIcon(SentIcon);
+const Pause = makeHugeIcon(PauseIcon);
+const Play = makeHugeIcon(PlayIcon);
+const Plus = makeHugeIcon(Add01Icon);
+const CircleHelp = makeHugeIcon(HelpCircleIcon);
+const Redo2 = makeHugeIcon(ArrowUpRight01Icon);
+const RotateCcw = makeHugeIcon(Rotate01Icon);
+const Share2 = makeHugeIcon(Share01Icon);
+const PanelLeft = makeHugeIcon(SidebarLeftIcon);
+const SkipBack = makeHugeIcon(ArrowLeft02Icon);
+const SkipForward = makeHugeIcon(ArrowRight02Icon);
+const Settings2 = makeHugeIcon(Settings01Icon);
+const SlidersHorizontal = makeHugeIcon(SlidersHorizontalIcon);
+const Sparkles = makeHugeIcon(SparklesIcon);
+const Volume2 = makeHugeIcon(VolumeHighIcon);
+const VolumeX = makeHugeIcon(VolumeMute01Icon);
+const SpeakerSimpleX = makeHugeIcon(VolumeOffIcon);
+const Trash2 = makeHugeIcon(Delete02Icon);
+const Undo2 = makeHugeIcon(ArrowUpLeft01Icon);
+const Upload = makeHugeIcon(Upload01Icon);
+const Music2 = makeHugeIcon(AudioWaveformIcon);
+const X = makeHugeIcon(Cancel01Icon);
 
 type AssetStatus = 'Ready' | 'Reading file' | 'Generating preview' | 'Extracting audio';
 
@@ -119,111 +185,21 @@ function EditorGlyph({
   size?: number;
   className?: string;
 }) {
-  const common = {
-    width: size,
-    height: size,
-    viewBox: '0 0 16 16',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.5,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    className,
-    'aria-hidden': true,
-  };
+  const icons = {
+    recipe: Layers01Icon,
+    subtitles: TextIcon,
+    dialogue: AudioWaveformIcon,
+    grade: SlidersHorizontalIcon,
+    callout: Cursor01Icon,
+    trim: ScissorIcon,
+    split: SplitIcon,
+    snapping: Magnet01Icon,
+    captions: TextIcon,
+    detach: Unlink01Icon,
+    ripple: Delete02Icon,
+  } satisfies Record<EditorGlyphName, typeof BellIcon>;
 
-  if (name === 'recipe') {
-    return (
-      <svg {...common}>
-        <path d="m3 4.25 5-2.5 5 2.5-5 2.5-5-2.5Z" />
-        <path d="m3 7.25 5 2.5 5-2.5M3 10.25l5 2.5 5-2.5" />
-      </svg>
-    );
-  }
-  if (name === 'subtitles') {
-    return (
-      <svg {...common}>
-        <rect x="2.25" y="3" width="11.5" height="10" rx="1.5" />
-        <path d="M4.25 6.25h6.5M4.25 9.5h2.5M8 9.5h3.75" />
-        <path d="M8 9.5h3.75" strokeWidth="2.25" />
-      </svg>
-    );
-  }
-  if (name === 'dialogue') {
-    return (
-      <svg {...common}>
-        <path d="M2 8h1l1-3v6l1.4-7v8L7 6v4l1-2h1" />
-        <path d="M10 8h4" opacity=".62" />
-        <path d="M10 5.5h4M10 10.5h4" opacity=".34" />
-      </svg>
-    );
-  }
-  if (name === 'grade') {
-    return (
-      <svg {...common}>
-        <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
-        <circle cx="6" cy="4" r="1.25" />
-        <circle cx="10.25" cy="8" r="1.25" />
-        <circle cx="7.75" cy="12" r="1.25" />
-      </svg>
-    );
-  }
-  if (name === 'callout') {
-    return (
-      <svg {...common}>
-        <circle cx="6" cy="8" r="2.25" />
-        <path d="M6 2.25V4M6 12v1.75M.25 8H4m4.25 0H10" />
-        <path d="M10 5.25h3.75v5.5H10l-1.5-2.75L10 5.25Z" />
-      </svg>
-    );
-  }
-  if (name === 'trim') {
-    return (
-      <svg {...common}>
-        <path d="M3.25 3v10M12.75 3v10M5.5 5.25h5M5.5 10.75h5" />
-        <path d="m7 8 1-1 1 1-1 1-1-1Z" />
-      </svg>
-    );
-  }
-  if (name === 'split') {
-    return (
-      <svg {...common}>
-        <path d="M2.25 3.25h4.5v9.5h-4.5zM9.25 3.25h4.5v9.5h-4.5z" />
-        <path d="M8 2v12M6.5 6.5 8 8 6.5 9.5M9.5 6.5 8 8l1.5 1.5" />
-      </svg>
-    );
-  }
-  if (name === 'snapping') {
-    return (
-      <svg {...common}>
-        <path d="M3 3v5.25a5 5 0 0 0 10 0V3M3 6h3M10 6h3" />
-        <path d="M8 1.75v2.5M8 11.75v2.5" strokeDasharray="1.5 1.5" />
-      </svg>
-    );
-  }
-  if (name === 'captions') {
-    return (
-      <svg {...common}>
-        <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
-        <path d="M4 9.25h3M8.5 9.25H12M4 11.25h5" />
-      </svg>
-    );
-  }
-  if (name === 'detach') {
-    return (
-      <svg {...common}>
-        <rect x="2" y="2" width="12" height="4.5" rx="1" />
-        <path d="M4 4.25h1M7.5 4.25h1M11 4.25h1M8 7.75v2.5" strokeDasharray="1.5 1.5" />
-        <path d="M2 12h1.5l1-2 1.25 4 1.25-3 1.25 2 1.25-2 1 1H14" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...common}>
-      <path d="M2 3.25h4.5v9.5H2zM9.5 3.25H14v9.5H9.5z" />
-      <path d="m7 6 2 2-2 2M9 6 7 8l2 2" />
-    </svg>
-  );
+  return <HugeiconsIcon icon={icons[name]} size={size} strokeWidth={1.5} className={className} aria-hidden="true" />;
 }
 
 const TRANSCRIPT: TranscriptLine[] = [
@@ -324,14 +300,19 @@ export default function VideoEditor() {
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedClipId, setSelectedClipId] = useState('');
   const [activeTab, setActiveTab] = useState<'assets' | 'library' | 'transcript'>('assets');
-  const [assetView, setAssetView] = useState<'grid' | 'list'>('grid');
+  const [assetView, setAssetView] = useState<'grid' | 'list'>('list');
   const [assetSearch, setAssetSearch] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
   const [projectName, setProjectName] = useState('Untitled video');
   const [fitMode, setFitMode] = useState<'fit' | 'original'>('fit');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [volume, setVolume] = useState(0.82);
   const [muted, setMuted] = useState(false);
   const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    if (!assets.length && activeTab === 'transcript') setActiveTab('assets');
+  }, [activeTab, assets.length]);
   const [playhead, setPlayhead] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [videoLoading, setVideoLoading] = useState(false);
@@ -499,6 +480,14 @@ export default function VideoEditor() {
     );
   }, []);
 
+  const updateAssetDuration = useCallback((assetId: string, duration: number) => {
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    setAssets((current) =>
+      current.map((asset) => (asset.id === assetId ? { ...asset, duration } : asset)),
+    );
+    return true;
+  }, []);
+
   const scheduleProcessing = useCallback(
     (assetId: string) => {
       const stages: Array<{ delay: number; status: AssetStatus }> = [
@@ -541,7 +530,7 @@ export default function VideoEditor() {
         id,
         name: file.name,
         url,
-        duration: 12,
+        duration: 0,
         status: 'Reading file',
         objectUrl: true,
       });
@@ -549,17 +538,31 @@ export default function VideoEditor() {
       const metadataVideo = document.createElement('video');
       metadataVideo.preload = 'metadata';
       metadataVideo.src = url;
-      metadataVideo.onloadedmetadata = () => {
-        setAssets((current) =>
-          current.map((asset) =>
-            asset.id === id
-              ? { ...asset, duration: Number.isFinite(metadataVideo.duration) ? metadataVideo.duration : 12 }
-              : asset,
-          ),
-        );
+      const releaseMetadataVideo = () => {
+        metadataVideo.onloadedmetadata = null;
+        metadataVideo.ondurationchange = null;
+        metadataVideo.oncanplay = null;
+        metadataVideo.onerror = null;
         metadataVideo.removeAttribute('src');
         metadataVideo.load();
       };
+      const readDuration = () => {
+        if (!updateAssetDuration(id, metadataVideo.duration)) return false;
+        releaseMetadataVideo();
+        return true;
+      };
+      metadataVideo.onloadedmetadata = () => {
+        if (!readDuration() && metadataVideo.duration === Infinity) {
+          metadataVideo.currentTime = Number.MAX_SAFE_INTEGER;
+        }
+      };
+      metadataVideo.ondurationchange = readDuration;
+      metadataVideo.oncanplay = readDuration;
+      metadataVideo.onerror = () => {
+        setUploadError(`Craon could not read the duration of ${file.name}.`);
+        releaseMetadataVideo();
+      };
+      metadataVideo.load();
       scheduleProcessing(id);
     }
 
@@ -573,7 +576,7 @@ export default function VideoEditor() {
       );
       announce(`${accepted.length} ${accepted.length === 1 ? 'video' : 'videos'} added locally`);
     }
-  }, [announce, assets.length, scheduleProcessing]);
+  }, [announce, assets.length, scheduleProcessing, updateAssetDuration]);
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     ingestFiles(Array.from(event.target.files ?? []));
@@ -595,10 +598,14 @@ export default function VideoEditor() {
         announce('This clip is still preparing');
         return;
       }
+      if (!Number.isFinite(asset.duration) || asset.duration <= 0) {
+        announce('Craon is still reading this clip duration');
+        return;
+      }
       const clip: TimelineClip = {
         id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         assetId,
-        duration: Math.min(asset.duration || 12, 18),
+        duration: asset.duration,
       };
       setClips((current) => [...current, clip]);
       setSelectedClipId(clip.id);
@@ -803,7 +810,11 @@ export default function VideoEditor() {
           </div>
         </header>
 
-        <div className={`${styles.workspace} ${aiCollapsed ? styles.workspaceAiCollapsed : ''}`}>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className={`${styles.workspace} ${aiCollapsed ? styles.workspaceAiCollapsed : ''}`}
+        >
+          <ResizablePanel defaultSize="28%" minSize="20%" maxSize="38%">
           <aside className={`${styles.aiPanel} ${aiCollapsed ? styles.aiPanelCollapsed : ''}`}>
             <div className={styles.aiRail}>
               <IconButton
@@ -847,7 +858,15 @@ export default function VideoEditor() {
               />
             </div>
           </aside>
+          </ResizablePanel>
 
+          <ResizableHandle className={styles.resizeHandle} />
+
+          <ResizablePanel defaultSize="72%" minSize="62%">
+            <ResizablePanelGroup orientation="vertical" className={styles.rightWorkspace}>
+              <ResizablePanel defaultSize="68%" minSize="45%">
+                <ResizablePanelGroup orientation="horizontal" className={styles.topWorkspace}>
+                  <ResizablePanel defaultSize="25%" minSize="18%" maxSize="36%">
           <section
             className={`${styles.assetsPanel} ${assetsDrawerOpen ? styles.assetsDrawerOpen : ''}`}
             onDragEnter={(event) => {
@@ -865,7 +884,7 @@ export default function VideoEditor() {
                 {[
                   ['assets', 'My Assets'],
                   ['library', 'Library'],
-                  ['transcript', 'Transcript'],
+                  ...(assets.length ? [['transcript', 'Transcript']] : []),
                 ].map(([value, label]) => (
                   <button
                     key={value}
@@ -880,9 +899,12 @@ export default function VideoEditor() {
                 ))}
               </div>
               <div className={styles.headerActions}>
-                <IconButton label="Upload footage" onClick={chooseFiles}>
-                  <Upload size={14} />
-                </IconButton>
+                {activeTab === 'assets' && (
+                  <button type="button" className={styles.assetUploadButton} onClick={chooseFiles}>
+                    <Upload size={13} />
+                    <span>Import footage</span>
+                  </button>
+                )}
                 <IconButton label="New folder" onClick={() => announce('Folder created')}>
                   <FolderOpen size={14} />
                 </IconButton>
@@ -990,7 +1012,11 @@ export default function VideoEditor() {
               </>
             )}
           </section>
+          </ResizablePanel>
 
+          <ResizableHandle className={styles.resizeHandle} />
+
+          <ResizablePanel defaultSize="75%" minSize="56%">
           <section
             className={`${styles.viewerPanel} ${draggingMedia ? styles.viewerPanelDragging : ''}`}
             onDragEnter={(event) => {
@@ -1005,7 +1031,7 @@ export default function VideoEditor() {
           >
             <div className={styles.viewerToolbar}>
               <div className={styles.viewerTitle}>
-                <span>Viewer</span>
+                <span>Preview</span>
                 <small>{activeAsset ? '1920 × 1080' : ''}</small>
               </div>
               <button
@@ -1028,9 +1054,12 @@ export default function VideoEditor() {
                     src={activeAsset.url}
                     muted={muted}
                     playsInline
-                    preload="metadata"
+                    preload="auto"
                 onLoadStart={() => setVideoLoading(true)}
-                onLoadedMetadata={() => setVideoLoading(false)}
+                onLoadedMetadata={(event) => {
+                  setVideoLoading(false);
+                  updateAssetDuration(activeAsset.id, event.currentTarget.duration);
+                }}
                 onLoadedData={() => setVideoLoading(false)}
                 onCanPlay={() => setVideoLoading(false)}
                     onEnded={() => setPlaying(false)}
@@ -1047,7 +1076,6 @@ export default function VideoEditor() {
                 <button type="button" className={styles.viewerDropzone} onClick={chooseFiles}>
                   <Film size={20} />
                   <span>Choose footage to preview</span>
-                  <small>Click or drop media here</small>
                 </button>
               )}
 
@@ -1112,7 +1140,14 @@ export default function VideoEditor() {
               </div>
             </div>
           </section>
+              </ResizablePanel>
 
+                </ResizablePanelGroup>
+              </ResizablePanel>
+
+              <ResizableHandle className={styles.resizeHandle} />
+
+              <ResizablePanel defaultSize="32%" minSize="24%" maxSize="55%">
           <section
             className={`${styles.timelinePanel} ${timelineDropActive ? styles.timelineDropActive : ''}`}
             onDragEnter={(event) => {
@@ -1133,7 +1168,7 @@ export default function VideoEditor() {
                 <IconButton label="Split clip" onClick={() => announce('Split tool ready at the playhead')}>
                   <EditorGlyph name="split" size={14} />
                 </IconButton>
-                <IconButton label="Snapping" active><EditorGlyph name="snapping" size={14} /></IconButton>
+                <IconButton label="Snapping"><EditorGlyph name="snapping" size={14} /></IconButton>
                 <IconButton
                   label="Add captions"
                   onClick={() => submitPrompt('Add word-perfect captions')}
@@ -1234,9 +1269,7 @@ export default function VideoEditor() {
                       );
                     })}
                     {!clips.length && (
-                      <button type="button" className={styles.timelineEmptyLabel} onClick={chooseFiles}>
-                        Drop footage to start editing
-                      </button>
+                      <span className={styles.timelineEmptyLabel}>Drag media here to start editing</span>
                     )}
                   </div>
                   <div className={`${styles.audioTrack} ${muted ? styles.trackDimmed : ''}`}>
@@ -1269,7 +1302,10 @@ export default function VideoEditor() {
               </div>
             </div>
           </section>
-        </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+        </ResizablePanelGroup>
 
         {aiDrawerOpen && (
           <div className={styles.drawerBackdrop} onMouseDown={() => setAiDrawerOpen(false)}>
@@ -1325,7 +1361,7 @@ export default function VideoEditor() {
                   <Dialog.Title id="export-title" className={styles.dialogTitle}>Export video</Dialog.Title>
                 </div>
                 <IconButton label="Close export" disabled={exporting} onClick={() => setExportOpen(false)}>
-                  <X size={16} />
+                  <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.5} />
                 </IconButton>
               </div>
               <div className={styles.exportPreview}>
@@ -1374,15 +1410,67 @@ export default function VideoEditor() {
               )}
               <div className={styles.modalFooter}>
                 <span id="export-description">No files leave your device in this prototype.</span>
-                <button
+                <ShadcnButton
                   type="button"
+                  variant="default"
+                  size="sm"
                   disabled={exporting}
                   className={styles.exportConfirm}
                   onClick={startExport}
                 >
-                  {exporting ? <Loader2 size={14} /> : exportProgress === 100 ? <Check size={14} /> : <Download size={14} />}
+                  <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.5} />
                   {exporting ? 'Exporting' : exportProgress === 100 ? 'Ready' : 'Export preview'}
-                </button>
+                </ShadcnButton>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+
+        <Dialog.Root
+          open={Boolean(pendingDeleteAsset)}
+          onOpenChange={(open) => {
+            if (!open) setPendingDeleteAssetId(null);
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className={styles.modalBackdrop} />
+            <Dialog.Content className={`${styles.exportModal} ${styles.deleteAssetModal}`}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <span className={styles.panelEyebrow}>Media library</span>
+                  <Dialog.Title className={styles.dialogTitle}>Delete asset?</Dialog.Title>
+                </div>
+                <IconButton label="Close confirmation" onClick={() => setPendingDeleteAssetId(null)}>
+                  <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.5} />
+                </IconButton>
+              </div>
+              <Dialog.Description className={styles.deleteDescription}>
+                This will remove <strong>{pendingDeleteAsset?.name}</strong> and any timeline items
+                using it. This action cannot be undone.
+              </Dialog.Description>
+              <div className={`${styles.modalFooter} ${styles.deleteModalFooter}`}>
+                <ShadcnButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={styles.cancelDelete}
+                  onClick={() => setPendingDeleteAssetId(null)}
+                >
+                  Cancel
+                </ShadcnButton>
+                <ShadcnButton
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className={styles.confirmDelete}
+                  onClick={() => {
+                    if (pendingDeleteAssetId) removeAsset(pendingDeleteAssetId);
+                    setPendingDeleteAssetId(null);
+                  }}
+                >
+                  <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.5} />
+                  Delete
+                </ShadcnButton>
               </div>
             </Dialog.Content>
           </Dialog.Portal>
@@ -1395,13 +1483,33 @@ export default function VideoEditor() {
           </div>
         )}
 
-        <IconButton
-          label="Editor help"
-          className={styles.helpButton}
-          onClick={() => announce('Tip: press Space to play and Delete to remove a selected clip')}
-        >
-          <CircleHelp size={18} />
-        </IconButton>
+        <div className={styles.helpDock}>
+          {helpOpen && (
+            <div className={styles.helpMenu} role="menu" aria-label="Help options">
+              <button type="button" role="menuitem" onClick={() => { announce('Feedback form opened'); setHelpOpen(false); }}>
+                <MessageCircle size={15} />
+                Feedback
+              </button>
+              <button type="button" role="menuitem" onClick={() => { announce('Feature requests opened'); setHelpOpen(false); }}>
+                <CircleHelp size={15} />
+                Feature requests
+              </button>
+              <button type="button" role="menuitem" onClick={() => { announce('Contact support opened'); setHelpOpen(false); }}>
+                <Microphone size={15} />
+                Contact support
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            className={styles.helpButton}
+            aria-label="Editor help"
+            aria-expanded={helpOpen}
+            onClick={() => setHelpOpen((current) => !current)}
+          >
+            <CircleHelp size={18} />
+          </button>
+        </div>
       </div>
     </main>
     </Tooltip.Provider>
@@ -1444,7 +1552,7 @@ function AiWorkspace({
       {aiState === 'idle' && (
         <div className={styles.aiOnboarding}>
           <div className={styles.aiIntro}>
-            <h2>What do you want to create today?</h2>
+            <h2>Start an edit</h2>
           </div>
           <div className={styles.starterGrid}>
             {STARTER_ACTIONS.map(({ title, copy }) => (
@@ -1606,9 +1714,16 @@ function AssetCard({
         </span>
       </button>
       <div className={styles.assetHoverActions}>
-        <IconButton label="Add to timeline" onClick={onAdd} disabled={asset.status !== 'Ready'}>
-          <Plus size={13} />
-        </IconButton>
+        {selected && asset.status === 'Ready' ? (
+          <button type="button" className={styles.assetAddAction} onClick={onAdd}>
+            <Plus size={13} />
+            <span>Add to timeline</span>
+          </button>
+        ) : (
+          <IconButton label="Add to timeline" onClick={onAdd} disabled={asset.status !== 'Ready'}>
+            <Plus size={13} />
+          </IconButton>
+        )}
         <IconButton label="Remove asset" onClick={onRemove}>
           <Trash2 size={13} />
         </IconButton>
@@ -1649,7 +1764,7 @@ function TranscriptPanel({
       </label>
       <div className={styles.transcriptMeta}>
         <span><MessageCircle size={12} /> Speaker 1</span>
-        <span>English · Mock transcript</span>
+        <span>English</span>
       </div>
       <div className={styles.transcriptLines}>
         {lines.map((line) => {
@@ -1682,24 +1797,41 @@ function TranscriptPanel({
 }
 
 function LibraryPanel({ onUse }: { onUse: (value: string) => void }) {
-  const items = [
-    { icon: Captions, title: 'Bold subtitle kit', copy: 'Kinetic captions with safe-area layouts' },
-    { icon: Music2, title: 'Clean dialogue', copy: 'Balanced voice and reduced room noise' },
-    { icon: Film, title: 'Warm cinema grade', copy: 'Shot-matched contrast and warm highlights' },
-    { icon: Layers3, title: 'Product callouts', copy: 'Minimal labels and tracked feature notes' },
+  const [selectedRecipe, setSelectedRecipe] = useState('Craon edit recipes');
+  const items: Array<{ glyph: EditorGlyphName; title: string; copy: string }> = [
+    { glyph: 'subtitles', title: 'Bold subtitle kit', copy: 'Kinetic captions with safe-area layouts' },
+    { glyph: 'dialogue', title: 'Clean dialogue', copy: 'Balanced voice and reduced room noise' },
+    { glyph: 'grade', title: 'Warm cinema grade', copy: 'Shot-matched contrast and warm highlights' },
+    { glyph: 'callout', title: 'Product callouts', copy: 'Minimal labels and tracked feature notes' },
   ];
   return (
     <div className={styles.libraryPanel}>
-      <div className={styles.libraryIntro}>
-        <Sparkles size={16} />
+      <button
+        type="button"
+        className={`${styles.libraryIntro} ${selectedRecipe === 'Craon edit recipes' ? styles.librarySelected : ''}`}
+        onClick={() => {
+          setSelectedRecipe('Craon edit recipes');
+          onUse('Apply a focused Craon edit recipe');
+        }}
+      >
+        <EditorGlyph name="recipe" />
         <span>
           <strong>Craon edit recipes</strong>
           <small>Apply a focused look or treatment to the current sequence.</small>
         </span>
-      </div>
-      {items.map(({ icon: Icon, title, copy }) => (
-        <button type="button" key={title} onClick={() => onUse(`Apply ${title.toLowerCase()}`)}>
-          <span><Icon size={15} /></span>
+        <ChevronRight size={13} />
+      </button>
+      {items.map(({ glyph, title, copy }) => (
+        <button
+          type="button"
+          key={title}
+          className={selectedRecipe === title ? styles.librarySelected : ''}
+          onClick={() => {
+            setSelectedRecipe(title);
+            onUse(`Apply ${title.toLowerCase()}`);
+          }}
+        >
+          <EditorGlyph name={glyph} />
           <span><strong>{title}</strong><small>{copy}</small></span>
           <ChevronRight size={13} />
         </button>
