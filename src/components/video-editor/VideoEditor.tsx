@@ -10,6 +10,7 @@ import {
   ArrowLeft02Icon,
   ArrowRight01Icon,
   ArrowRight02Icon,
+  ArrowUp01Icon,
   ArrowUpLeft01Icon,
   ArrowUpRight01Icon,
   AudioWaveformIcon,
@@ -35,7 +36,9 @@ import {
   Message01Icon,
   Mic01Icon,
   MoreHorizontalIcon,
+  MoreVerticalIcon,
   PauseIcon,
+  PencilEdit01Icon,
   PlayIcon,
   Rotate01Icon,
   ScissorIcon,
@@ -62,6 +65,7 @@ import {
 } from '@hugeicons/core-free-icons';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import type { PanelImperativeHandle } from 'react-resizable-panels';
 import {
   type ChangeEvent,
   type CSSProperties,
@@ -73,6 +77,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './VideoEditor.module.css';
 
 type HugeIconProps = { size?: number; className?: string };
@@ -85,6 +90,7 @@ function makeHugeIcon(icon: typeof BellIcon) {
 
 const Bell = makeHugeIcon(BellIcon);
 const ChevronDown = makeHugeIcon(ArrowDown01Icon);
+const ArrowUp = makeHugeIcon(ArrowUp01Icon);
 const CaretLeft = makeHugeIcon(ArrowLeft01Icon);
 const ChevronRight = makeHugeIcon(ArrowRight01Icon);
 const MessageCircle = makeHugeIcon(Message01Icon);
@@ -96,6 +102,9 @@ const Maximize2 = makeHugeIcon(FullScreenIcon);
 const Cursor = makeHugeIcon(Cursor01Icon);
 const GripVertical = makeHugeIcon(DragDropIcon);
 const MoreHorizontal = makeHugeIcon(MoreHorizontalIcon);
+const MoreVertical = makeHugeIcon(MoreVerticalIcon);
+const Download = makeHugeIcon(Download01Icon);
+const Pencil = makeHugeIcon(PencilEdit01Icon);
 const Eye = makeHugeIcon(EyeIcon);
 const EyeSlash = makeHugeIcon(ViewOffIcon);
 const Film = makeHugeIcon(Film01Icon);
@@ -294,13 +303,70 @@ function IconButton({
   );
 }
 
+function getAiEditSummary(command: string) {
+  const lower = command.toLowerCase();
+  if (lower.includes('pause') || lower.includes('silence') || lower.includes('gap')) {
+    return {
+      title: 'Silence removal & delivery pacing applied',
+      subtitle: 'Timeline sequence tightened',
+      stats: [
+        { label: 'Removed', value: '4 silent gaps' },
+        { label: 'Saved', value: '1.4 seconds' },
+        { label: 'Pacing', value: 'Tightened speech cadence' },
+      ],
+    };
+  }
+  if (lower.includes('subtitle') || lower.includes('caption') || lower.includes('text')) {
+    return {
+      title: 'Word-perfect subtitles generated',
+      subtitle: 'Timeline captions created and synced',
+      stats: [
+        { label: 'Created', value: '26 animated subtitles' },
+        { label: 'Font', value: 'Geist Sans · Medium' },
+        { label: 'Sync', value: 'Word-perfect speech timing' },
+      ],
+    };
+  }
+  if (lower.includes('short') || lower.includes('vertical') || lower.includes('reel') || lower.includes('tiktok')) {
+    return {
+      title: 'Short highlight sequence created',
+      subtitle: '9:16 vertical focus and key moments',
+      stats: [
+        { label: 'Extracted', value: '3 key highlight clips' },
+        { label: 'Format', value: '9:16 Vertical crop' },
+        { label: 'Duration', value: '28s short sequence' },
+      ],
+    };
+  }
+  if (lower.includes('audio') || lower.includes('sound') || lower.includes('noise') || lower.includes('voice')) {
+    return {
+      title: 'Audio enhancement & noise cleanup',
+      subtitle: 'Dialogue track enhanced',
+      stats: [
+        { label: 'Cleaned', value: 'Background hum & reverb' },
+        { label: 'Leveled', value: 'Speech volume & EQ' },
+        { label: 'Quality', value: 'Enhanced audio track' },
+      ],
+    };
+  }
+  return {
+    title: 'AI video edit complete',
+    subtitle: 'Timeline changes applied in context',
+    stats: [
+      { label: 'Action', value: command.length > 24 ? `${command.slice(0, 22)}...` : command },
+      { label: 'Sequence', value: 'Timeline clips updated' },
+      { label: 'Status', value: 'Highlighted on timeline' },
+    ],
+  };
+}
+
 export default function VideoEditor() {
   const [assets, setAssets] = useState<EditorAsset[]>([]);
   const [clips, setClips] = useState<TimelineClip[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedClipId, setSelectedClipId] = useState('');
   const [activeTab, setActiveTab] = useState<'assets' | 'library' | 'transcript'>('assets');
-  const [assetView, setAssetView] = useState<'grid' | 'list'>('list');
+  const [assetView, setAssetView] = useState<'grid' | 'list'>('grid');
   const [assetSearch, setAssetSearch] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
   const [projectName, setProjectName] = useState('Untitled video');
@@ -338,7 +404,69 @@ export default function VideoEditor() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const objectUrlsRef = useRef<string[]>([]);
+  const aiPanelRef = useRef<PanelImperativeHandle>(null);
   const processingTimersRef = useRef<number[]>([]);
+  const historyRef = useRef<TimelineClip[][]>([[]]);
+  const historyIndexRef = useRef<number>(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const pushHistory = useCallback((newClips: TimelineClip[]) => {
+    const stack = historyRef.current.slice(0, historyIndexRef.current + 1);
+    stack.push(newClips);
+    historyRef.current = stack;
+    historyIndexRef.current = stack.length - 1;
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(false);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current <= 0) {
+      announce('Nothing to undo');
+      return;
+    }
+    historyIndexRef.current -= 1;
+    const prevClips = historyRef.current[historyIndexRef.current];
+    setClips(prevClips);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+    announce('Last edit undone');
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) {
+      announce('Nothing to redo');
+      return;
+    }
+    historyIndexRef.current += 1;
+    const nextClips = historyRef.current[historyIndexRef.current];
+    setClips(nextClips);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+    announce('Edit restored');
+  }, []);
+
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSelectChip = useCallback((chipText: string) => {
+    setPrompt(chipText);
+    window.setTimeout(() => {
+      composerTextareaRef.current?.focus();
+    }, 10);
+  }, []);
+
+  const toggleAiCollapse = useCallback(() => {
+    const panel = aiPanelRef.current;
+    if (!panel) {
+      setAiCollapsed((prev) => !prev);
+      return;
+    }
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
   const playingRef = useRef(false);
   const lastFrameRef = useRef(0);
 
@@ -493,14 +621,35 @@ export default function VideoEditor() {
       const stages: Array<{ delay: number; status: AssetStatus }> = [
         { delay: 520, status: 'Generating preview' },
         { delay: 1180, status: 'Extracting audio' },
-        { delay: 1900, status: 'Ready' },
+        { delay: 1600, status: 'Ready' },
       ];
       stages.forEach(({ delay, status }) => {
-        const timer = window.setTimeout(() => updateAssetStatus(assetId, status), delay);
+        const timer = window.setTimeout(() => {
+          updateAssetStatus(assetId, status);
+          if (status === 'Ready') {
+            setAssets((currentAssets) => {
+              const readyAsset = currentAssets.find((a) => a.id === assetId);
+              if (readyAsset && readyAsset.duration > 0) {
+                setClips((currentClips) => {
+                  if (currentClips.some((c) => c.assetId === assetId)) return currentClips;
+                  const newClip: TimelineClip = {
+                    id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    assetId,
+                    duration: readyAsset.duration,
+                  };
+                  const next = [...currentClips, newClip];
+                  pushHistory(next);
+                  return next;
+                });
+              }
+              return currentAssets;
+            });
+          }
+        }, delay);
         processingTimersRef.current.push(timer);
       });
     },
-    [updateAssetStatus],
+    [pushHistory, updateAssetStatus],
   );
 
   const ingestFiles = useCallback((incoming: File[]) => {
@@ -590,6 +739,25 @@ export default function VideoEditor() {
     ingestFiles(Array.from(event.dataTransfer.files ?? []));
   };
 
+  const previewAssetFullscreen = useCallback((assetId: string) => {
+    setSelectedAssetId(assetId);
+    setVideoLoading(true);
+    setPlayhead(0);
+    setPlaying(true);
+
+    window.setTimeout(() => {
+      const video = videoRef.current;
+      const stage = video?.parentElement;
+      if (video?.requestFullscreen) {
+        void video.requestFullscreen().catch(() => {
+          if (stage?.requestFullscreen) void stage.requestFullscreen();
+        });
+      } else if (stage?.requestFullscreen) {
+        void stage.requestFullscreen();
+      }
+    }, 50);
+  }, []);
+
   const addAssetToTimeline = useCallback(
     (assetId: string) => {
       const asset = assets.find((item) => item.id === assetId);
@@ -607,12 +775,16 @@ export default function VideoEditor() {
         assetId,
         duration: asset.duration,
       };
-      setClips((current) => [...current, clip]);
+      setClips((current) => {
+        const next = [...current, clip];
+        pushHistory(next);
+        return next;
+      });
       setSelectedClipId(clip.id);
       setPlayhead(projectDuration);
       announce('Clip added to the timeline');
     },
-    [announce, assets, projectDuration],
+    [announce, assets, projectDuration, pushHistory],
   );
 
   const removeAsset = (assetId: string) => {
@@ -622,36 +794,120 @@ export default function VideoEditor() {
     objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== asset.url);
     const remainingAssets = assets.filter((item) => item.id !== assetId);
     setAssets(remainingAssets);
-    setClips((current) => current.filter((clip) => clip.assetId !== assetId));
+    setClips((current) => {
+      const next = current.filter((clip) => clip.assetId !== assetId);
+      pushHistory(next);
+      return next;
+    });
     if (selectedAssetId === assetId) setSelectedAssetId(remainingAssets[0]?.id ?? '');
     announce('Local asset removed');
   };
 
   const deleteSelectedClip = useCallback(() => {
     if (!selectedClipId) return;
-    setClips((current) => current.filter((clip) => clip.id !== selectedClipId));
+    setClips((current) => {
+      const next = current.filter((clip) => clip.id !== selectedClipId);
+      pushHistory(next);
+      return next;
+    });
     setSelectedClipId('');
     setPlayhead((current) => Math.min(current, Math.max(0, projectDuration - 0.1)));
     announce('Clip removed. Undo is available.');
-  }, [announce, projectDuration, selectedClipId]);
+  }, [announce, projectDuration, pushHistory, selectedClipId]);
+
+  const splitClipAtPlayhead = useCallback(() => {
+    if (!clips.length) {
+      announce('Add clips to the timeline before splitting');
+      return;
+    }
+    let target = clipStarts.find(({ start, end }) => playhead > start && playhead < end);
+    if (!target && selectedClipId) {
+      target = clipStarts.find(({ clip }) => clip.id === selectedClipId);
+    }
+    if (!target) {
+      announce('Move playhead over a clip to split');
+      return;
+    }
+    const { clip, start } = target;
+    const splitTime = Math.max(0.2, Math.min(playhead - start, clip.duration - 0.2));
+    if (splitTime <= 0.2 || splitTime >= clip.duration - 0.2) {
+      announce('Playhead is too close to clip edge to split');
+      return;
+    }
+    const leftClip: TimelineClip = {
+      id: `clip-${Date.now()}-1`,
+      assetId: clip.assetId,
+      duration: Number(splitTime.toFixed(2)),
+    };
+    const rightClip: TimelineClip = {
+      id: `clip-${Date.now()}-2`,
+      assetId: clip.assetId,
+      duration: Number((clip.duration - splitTime).toFixed(2)),
+    };
+    setClips((current) => {
+      const index = current.findIndex((item) => item.id === clip.id);
+      if (index < 0) return current;
+      const next = [...current];
+      next.splice(index, 1, leftClip, rightClip);
+      pushHistory(next);
+      return next;
+    });
+    setSelectedClipId(rightClip.id);
+    announce('Clip split at playhead');
+  }, [announce, clipStarts, clips.length, playhead, pushHistory, selectedClipId]);
+
+  const duplicateSelectedClip = useCallback(() => {
+    if (!selectedClipId) {
+      announce('Select a clip to duplicate');
+      return;
+    }
+    const target = clips.find((clip) => clip.id === selectedClipId);
+    if (!target) return;
+    const duplicate: TimelineClip = {
+      id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      assetId: target.assetId,
+      duration: target.duration,
+    };
+    setClips((current) => {
+      const index = current.findIndex((clip) => clip.id === selectedClipId);
+      const next = [...current];
+      next.splice(index + 1, 0, duplicate);
+      pushHistory(next);
+      return next;
+    });
+    setSelectedClipId(duplicate.id);
+    announce('Clip duplicated');
+  }, [announce, clips, pushHistory, selectedClipId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === 'Delete' &&
-        event.target instanceof HTMLElement &&
-        !['INPUT', 'TEXTAREA'].includes(event.target.tagName)
-      ) {
+      const target = event.target as HTMLElement;
+      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      if (event.key === 'Delete' || event.key === 'Backspace') {
         deleteSelectedClip();
-      }
-      if (event.code === 'Space' && event.target instanceof HTMLElement && event.target.tagName !== 'TEXTAREA') {
+      } else if (event.code === 'Space') {
         event.preventDefault();
         togglePlayback();
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        handleRedo();
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateSelectedClip();
+      } else if (event.key.toLowerCase() === 's') {
+        splitClipAtPlayhead();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteSelectedClip, togglePlayback]);
+  }, [deleteSelectedClip, duplicateSelectedClip, handleRedo, handleUndo, splitClipAtPlayhead, togglePlayback]);
 
   const reorderClip = (sourceId: string, targetId: string) => {
     if (!sourceId || sourceId === targetId) return;
@@ -662,6 +918,7 @@ export default function VideoEditor() {
       const next = [...current];
       const [moved] = next.splice(sourceIndex, 1);
       next.splice(targetIndex, 0, moved);
+      pushHistory(next);
       return next;
     });
     announce('Clip snapped into position');
@@ -719,799 +976,803 @@ export default function VideoEditor() {
 
   return (
     <Tooltip.Provider delayDuration={0} skipDelayDuration={0}>
-    <main className={styles.editorRoot}>
-      <div className={styles.mobileGate}>
-        <Copy size={28} />
-        <h1>Craon Editor is best experienced on desktop.</h1>
-        <p>Open this workspace on a larger screen to edit footage, timelines, and AI instructions.</p>
-      </div>
+      <main className={styles.editorRoot}>
+        <div className={styles.mobileGate}>
+          <Copy size={28} />
+          <h1>Craon Editor is best experienced on desktop.</h1>
+          <p>Open this workspace on a larger screen to edit footage, timelines, and AI instructions.</p>
+        </div>
 
-      <div className={styles.editorApp}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
-          multiple
-          hidden
-          onChange={handleFiles}
-        />
+        <div className={styles.editorApp}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+            multiple
+            hidden
+            onChange={handleFiles}
+          />
 
-        <header className={styles.topbar}>
-          <div className={styles.topbarLeft}>
-            <a href="/" className={styles.brand} aria-label="Return to Craon home">
-              <Copy size={18} />
-              <span>Craon</span>
-            </a>
-            <button
-              type="button"
-              className={styles.projectMenu}
-              onClick={() => announce('Project menu opened')}
-            >
-              Project <ChevronDown size={12} />
-            </button>
-            <span className={styles.topDivider} />
-            <IconButton label="Undo last change" onClick={() => announce('Last edit undone')}>
-              <Undo2 size={15} />
-            </IconButton>
-            <IconButton label="Redo change" onClick={() => announce('Edit restored')}>
-              <Redo2 size={15} />
-            </IconButton>
-            <IconButton label="Version history" onClick={() => announce('Version history is ready')}>
-              <History size={15} />
-            </IconButton>
-            <IconButton
-              label="Toggle assets panel"
-              onClick={() => setAssetsDrawerOpen((current) => !current)}
-              className={styles.narrowOnly}
-            >
-              <PanelLeft size={15} />
-            </IconButton>
-          </div>
-
-          <label className={styles.projectNameWrap}>
-            <span className={styles.srOnly}>Project name</span>
-            <input
-              value={projectName}
-              onChange={(event) => setProjectName(event.target.value)}
-              className={styles.projectName}
-            />
-            <Settings2 size={13} />
-          </label>
-
-          <div className={styles.topbarRight}>
-            <IconButton label="Notifications" onClick={() => announce('You are all caught up')}>
-              <Bell size={15} />
-            </IconButton>
-            <label className={styles.editorToggle}>
-              <span>Editor</span>
-              <input
-                type="checkbox"
-                checked={editorEnabled}
-                onChange={(event) => {
-                  setEditorEnabled(event.target.checked);
-                  announce(event.target.checked ? 'Editor controls enabled' : 'Editor controls hidden');
-                }}
-              />
-              <span className={styles.toggleTrack} />
-            </label>
-            <IconButton label="Craon community" onClick={() => announce('Community link copied')}>
-              <MessageCircle size={15} />
-            </IconButton>
-            <button
-              type="button"
-              className={styles.textButton}
-              onClick={() => announce('Private review link copied')}
-            >
-              <Share2 size={14} /> Share
-            </button>
-            <button type="button" className={styles.exportButton} onClick={() => setExportOpen(true)}>
-              Export
-            </button>
-          </div>
-        </header>
-
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className={`${styles.workspace} ${aiCollapsed ? styles.workspaceAiCollapsed : ''}`}
-        >
-          <ResizablePanel defaultSize="28%" minSize="20%" maxSize="38%">
-          <aside className={`${styles.aiPanel} ${aiCollapsed ? styles.aiPanelCollapsed : ''}`}>
-            <div className={styles.aiRail}>
-              <IconButton
-                label={aiCollapsed ? 'Expand AI panel' : 'Open AI assistant'}
-                onClick={() => aiCollapsed ? setAiCollapsed(false) : setAiDrawerOpen(true)}
-              >
-                {aiCollapsed ? <ChevronRight size={16} /> : <Sparkles size={16} />}
-              </IconButton>
-              <span>AI</span>
-            </div>
-            <div className={styles.aiPanelContent}>
-              <AiWorkspace
-                aiState={aiState}
-                lastCommand={lastCommand}
-                onStarter={(value) => {
-                  setPrompt(value);
-                  submitPrompt(value);
-                }}
-                onKeep={() => {
-                  setAiAffected([]);
-                  announce('AI edit kept');
-                }}
-                onUndo={() => {
-                  setAiState('idle');
-                  setAiAffected([]);
-                  announce('AI edit undone');
-                }}
-                onPreview={() => {
-                  setPlayhead(0);
-                  setPlaying(true);
-                }}
-                onCollapse={() => setAiCollapsed(true)}
-              />
-              <PromptComposer
-                prompt={prompt}
-                setPrompt={setPrompt}
-                processing={aiState === 'processing'}
-                onSubmit={() => submitPrompt()}
-                onAdd={chooseFiles}
-                onFeedback={announce}
-              />
-            </div>
-          </aside>
-          </ResizablePanel>
-
-          <ResizableHandle className={styles.resizeHandle} />
-
-          <ResizablePanel defaultSize="72%" minSize="62%">
-            <ResizablePanelGroup orientation="vertical" className={styles.rightWorkspace}>
-              <ResizablePanel defaultSize="68%" minSize="45%">
-                <ResizablePanelGroup orientation="horizontal" className={styles.topWorkspace}>
-                  <ResizablePanel defaultSize="25%" minSize="18%" maxSize="36%">
-          <section
-            className={`${styles.assetsPanel} ${assetsDrawerOpen ? styles.assetsDrawerOpen : ''}`}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setDraggingMedia(true);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) setDraggingMedia(false);
-            }}
-            onDrop={handleMediaDrop}
-          >
-            <div className={styles.panelHeader}>
-              <div className={styles.tabs} role="tablist" aria-label="Media views">
-                {[
-                  ['assets', 'My Assets'],
-                  ['library', 'Library'],
-                  ...(assets.length ? [['transcript', 'Transcript']] : []),
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === value}
-                    className={activeTab === value ? styles.tabActive : ''}
-                    onClick={() => setActiveTab(value as typeof activeTab)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className={styles.headerActions}>
-                {activeTab === 'assets' && (
-                  <button type="button" className={styles.assetUploadButton} onClick={chooseFiles}>
-                    <Upload size={13} />
-                    <span>Import footage</span>
-                  </button>
-                )}
-                <IconButton label="New folder" onClick={() => announce('Folder created')}>
-                  <FolderOpen size={14} />
-                </IconButton>
-                <IconButton label="Asset menu" onClick={() => announce('Asset options opened')}>
-                  <MoreHorizontal size={14} />
-                </IconButton>
-                <IconButton
-                  label="Close assets drawer"
-                  onClick={() => setAssetsDrawerOpen(false)}
-                  className={styles.drawerClose}
-                >
-                  <X size={14} />
-                </IconButton>
-              </div>
-            </div>
-
-            {activeTab === 'transcript' ? (
-              <TranscriptPanel
-                query={transcriptSearch}
-                setQuery={setTranscriptSearch}
-                lines={filteredTranscript}
-                activeId={activeTranscriptId}
-                onSeek={(time) => {
-                  setPlayhead(time);
-                  announce(`Playhead moved to ${formatTime(time)}`);
-                }}
-              />
-            ) : activeTab === 'library' ? (
-              <LibraryPanel onUse={(promptValue) => submitPrompt(promptValue)} />
-            ) : (
-              <>
-                <div className={styles.assetTools}>
-                  <label className={styles.searchField}>
-                    <Search size={13} />
-                    <input
-                      value={assetSearch}
-                      onChange={(event) => setAssetSearch(event.target.value)}
-                      placeholder="Search media"
-                    />
-                  </label>
-                  <IconButton
-                    label="Grid view"
-                    active={assetView === 'grid'}
-                    onClick={() => setAssetView('grid')}
-                  >
-                    <Grid2X2 size={13} />
-                  </IconButton>
-                  <IconButton
-                    label="List view"
-                    active={assetView === 'list'}
-                    onClick={() => setAssetView('list')}
-                  >
-                    <List size={13} />
-                  </IconButton>
-                  <IconButton label="Filter assets" onClick={() => announce('Showing all videos')}>
-                    <SlidersHorizontal size={13} />
-                  </IconButton>
-                </div>
-
-                {uploadError && (
-                  <div className={styles.inlineError} role="alert">
-                    <CircleHelp size={14} />
-                    <span>{uploadError}</span>
-                    <IconButton label="Dismiss error" onClick={() => setUploadError('')}>
-                      <X size={13} />
-                    </IconButton>
-                  </div>
-                )}
-
-                <div className={`${styles.assetList} ${assetView === 'list' ? styles.assetListRows : ''}`}>
-                  {filteredAssets.map((asset) => (
-                    <AssetCard
-                      key={asset.id}
-                      asset={asset}
-                      selected={selectedAssetId === asset.id}
-                      view={assetView}
-                      onSelect={() => {
-                        setSelectedAssetId(asset.id);
-                        setVideoLoading(true);
-                      }}
-                      onAdd={() => addAssetToTimeline(asset.id)}
-                      onRemove={() => setPendingDeleteAssetId(asset.id)}
-                    />
-                  ))}
-                  {!assets.length ? (
-                    <button type="button" className={styles.emptyMediaBin} onClick={chooseFiles}>
-                      <FolderOpen size={29} />
-                      <strong>No media yet</strong>
-                      <span>Import footage or drop files here</span>
-                    </button>
-                  ) : !filteredAssets.length ? (
-                    <div className={styles.emptyAssets}>
-                      <Search size={18} />
-                      <p>No media matches “{assetSearch}”</p>
-                    </div>
-                  ) : null}
-                </div>
-
-                {draggingMedia && (
-                  <div className={styles.dropOverlay}>
-                    <Upload size={22} />
-                    <strong>Drop to add media</strong>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-          </ResizablePanel>
-
-          <ResizableHandle className={styles.resizeHandle} />
-
-          <ResizablePanel defaultSize="75%" minSize="56%">
-          <section
-            className={`${styles.viewerPanel} ${draggingMedia ? styles.viewerPanelDragging : ''}`}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setDraggingMedia(true);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) setDraggingMedia(false);
-            }}
-            onDrop={handleMediaDrop}
-          >
-            <div className={styles.viewerToolbar}>
-              <div className={styles.viewerTitle}>
-                <span>Preview</span>
-                <small>{activeAsset ? '1920 × 1080' : ''}</small>
-              </div>
+          <header className={styles.topbar}>
+            <div className={styles.topbarLeft}>
+              <a href="/" className={styles.brand} aria-label="Return to Craon home">
+                <Copy size={16} />
+                <span>Craon</span>
+              </a>
               <button
                 type="button"
-                aria-label="Open clip attributes"
-                disabled={!activeAsset}
-                className={`${styles.attributeButton} ${inspectorOpen ? styles.attributeButtonActive : ''}`}
-                onClick={() => setInspectorOpen((current) => !current)}
+                className={styles.projectMenu}
+                onClick={() => announce('Project menu opened')}
               >
-                <SlidersHorizontal size={13} /> Attributes
+                Project <ChevronDown size={11} />
+              </button>
+              <span className={styles.topDivider} />
+              <IconButton label="Undo last change" disabled={!canUndo} onClick={handleUndo}>
+                <Undo2 size={14} />
+              </IconButton>
+              <IconButton label="Redo change" disabled={!canRedo} onClick={handleRedo}>
+                <Redo2 size={14} />
+              </IconButton>
+              <IconButton label="Version history" onClick={() => announce('Version history is ready')}>
+                <History size={14} />
+              </IconButton>
+              <IconButton
+                label={aiCollapsed ? 'Show AI panel' : 'Hide AI panel'}
+                onClick={toggleAiCollapse}
+                active={!aiCollapsed}
+              >
+                <PanelLeft size={14} />
+              </IconButton>
+            </div>
+
+            <div className={styles.topbarCenter}>
+              <label className={styles.projectNameWrap}>
+                <span className={styles.srOnly}>Project name</span>
+                <input
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  className={styles.projectName}
+                />
+                <IconButton label="Project settings" onClick={() => announce('Project settings opened')}>
+                  <Settings2 size={13} />
+                </IconButton>
+              </label>
+            </div>
+
+            <div className={styles.topbarRight}>
+              <IconButton label="Notifications" onClick={() => announce('You are all caught up')}>
+                <Bell size={14} />
+              </IconButton>
+              <label className={styles.editorToggle}>
+                <span>Editor</span>
+                <input
+                  type="checkbox"
+                  checked={editorEnabled}
+                  onChange={(event) => {
+                    setEditorEnabled(event.target.checked);
+                    announce(event.target.checked ? 'Editor controls enabled' : 'Editor controls hidden');
+                  }}
+                />
+                <span className={styles.toggleTrack} />
+              </label>
+              <IconButton label="Comments" onClick={() => announce('Comments opened')}>
+                <MessageCircle size={14} />
+              </IconButton>
+              <button
+                type="button"
+                className={styles.textButton}
+                onClick={() => announce('Private review link copied')}
+              >
+                <Share2 size={14} /> Share
+              </button>
+              <button type="button" className={styles.exportButton} onClick={() => setExportOpen(true)}>
+                Export
               </button>
             </div>
+          </header>
 
-            <div className={styles.viewerStage}>
-              {activeAsset ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    key={activeAsset.id}
-                    src={activeAsset.url}
-                    muted={muted}
-                    playsInline
-                    preload="auto"
-                onLoadStart={() => setVideoLoading(true)}
-                onLoadedMetadata={(event) => {
-                  setVideoLoading(false);
-                  updateAssetDuration(activeAsset.id, event.currentTarget.duration);
-                }}
-                onLoadedData={() => setVideoLoading(false)}
-                onCanPlay={() => setVideoLoading(false)}
-                    onEnded={() => setPlaying(false)}
-                    className={fitMode === 'fit' ? styles.videoFit : styles.videoOriginal}
-                  />
-                  {videoLoading && (
-                    <div className={styles.viewerLoading}>
-                      <Loader2 size={19} />
-                      <span>Preparing preview</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button type="button" className={styles.viewerDropzone} onClick={chooseFiles}>
-                  <Film size={20} />
-                  <span>Choose footage to preview</span>
-                </button>
-              )}
-
-              {inspectorOpen && activeAsset && (
-                <div className={styles.inspector}>
-                  <div className={styles.inspectorHeader}>
-                    <span>Clip attributes</span>
-                    <IconButton label="Close attributes" onClick={() => setInspectorOpen(false)}>
-                      <X size={13} />
-                    </IconButton>
-                  </div>
-                  <AttributeRow label="Position" value="0, 0" />
-                  <AttributeRow label="Scale" value="100%" />
-                  <AttributeRow label="Rotation" value="0°" />
-                  <AttributeRow label="Opacity" value="100%" />
-                  <button type="button" className={styles.resetAttributes} onClick={() => announce('Attributes reset')}>
-                    <RotateCcw size={12} /> Reset
-                  </button>
-                </div>
-              )}
-
-              {activeAsset && <div className={styles.viewerBadge}>
-                <button
-                  type="button"
-                  aria-label="Toggle preview sizing"
-                  onClick={() => setFitMode((current) => (current === 'fit' ? 'original' : 'fit'))}
-                >
-                  <ImageIcon size={13} /> {fitMode === 'fit' ? 'Fit' : 'Original'}
-                </button>
-              </div>}
-            </div>
-
-            <div className={styles.viewerControls}>
-              <span className={styles.timecode}>
-                {formatTime(playhead)} <i>/</i> {formatTime(playbackDuration)}
-              </span>
-              <div className={styles.viewerControlRight}>
-                <IconButton label={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted((current) => !current)}>
-                  {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                </IconButton>
-                <input
-                  aria-label="Preview volume"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={muted ? 0 : volume}
-                  onChange={(event) => {
-                    setMuted(false);
-                    setVolume(Number(event.target.value));
-                  }}
-                />
-                <IconButton
-                  label="Fullscreen preview"
-                  onClick={() => {
-                    const stage = videoRef.current?.parentElement;
-                    if (stage?.requestFullscreen) void stage.requestFullscreen();
-                  }}
-                >
-                  <Maximize2 size={14} />
-                </IconButton>
-              </div>
-            </div>
-          </section>
-              </ResizablePanel>
-
-                </ResizablePanelGroup>
-              </ResizablePanel>
-
-              <ResizableHandle className={styles.resizeHandle} />
-
-              <ResizablePanel defaultSize="32%" minSize="24%" maxSize="55%">
-          <section
-            className={`${styles.timelinePanel} ${timelineDropActive ? styles.timelineDropActive : ''}`}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setTimelineDropActive(true);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) setTimelineDropActive(false);
-            }}
-            onDrop={dropOnTimeline}
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className={`${styles.workspace} ${aiCollapsed ? styles.workspaceAiCollapsed : ''}`}
           >
-            <div className={styles.timelineHeader}>
-              <div className={styles.timelineTools}>
-                <IconButton label="Add media" onClick={chooseFiles}><Plus size={15} /></IconButton>
-                <IconButton label="Selection tool" active><Cursor size={15} /></IconButton>
-                <IconButton label="Trim edit mode"><EditorGlyph name="trim" size={14} /></IconButton>
-                <IconButton label="Split clip" onClick={() => announce('Split tool ready at the playhead')}>
-                  <EditorGlyph name="split" size={14} />
-                </IconButton>
-                <IconButton label="Snapping"><EditorGlyph name="snapping" size={14} /></IconButton>
-                <IconButton
-                  label="Add captions"
-                  onClick={() => submitPrompt('Add word-perfect captions')}
-                >
-                  <EditorGlyph name="captions" size={14} />
-                </IconButton>
-                <IconButton label="Detach audio" onClick={() => announce('Audio detached from the selected clip')}>
-                  <EditorGlyph name="detach" size={14} />
-                </IconButton>
-                <IconButton label="Ripple delete" onClick={() => announce('Select a clip or gap to ripple delete')}>
-                  <EditorGlyph name="ripple" size={14} />
-                </IconButton>
-                <IconButton label="Record voiceover"><Microphone size={15} /></IconButton>
-                <span className={styles.toolbarDivider} />
-                <span className={styles.clipCount}>{clips.length} {clips.length === 1 ? 'clip' : 'clips'}</span>
-                {aiAffected.length > 0 && <span className={styles.aiTimelineStatus}><Sparkles size={12} /> AI edit</span>}
-              </div>
-              <div className={styles.timelineTransport}>
-                <IconButton label="Previous frame" onClick={() => setPlayhead(Math.max(0, playhead - 1 / 30))}><SkipBack size={14} /></IconButton>
-                <IconButton label={playing ? 'Pause' : 'Play'} onClick={togglePlayback}>{playing ? <Pause size={15} /> : <Play size={15} />}</IconButton>
-                <IconButton label="Next frame" onClick={() => setPlayhead(Math.min(playbackDuration, playhead + 1 / 30))}><SkipForward size={14} /></IconButton>
-                <span className={styles.timecode}>{formatTime(playhead)} <i>/</i> {formatTime(playbackDuration)}</span>
-              </div>
-              <div className={styles.timelineActions}>
-                <IconButton label="Delete selected clip" disabled={!selectedClipId} onClick={deleteSelectedClip}>
-                  <Trash2 size={14} />
-                </IconButton>
-                <span className={styles.toolbarDivider} />
-                <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.65, current - 0.15))}>
-                  <ZoomOut size={14} />
-                </IconButton>
-                <input
-                  aria-label="Timeline zoom"
-                  type="range"
-                  min="0.65"
-                  max="2"
-                  step="0.05"
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                />
-                <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(2, current + 0.15))}>
-                  <ZoomIn size={14} />
-                </IconButton>
-              </div>
-            </div>
+            <ResizablePanel
+              ref={aiPanelRef}
+              collapsible
+              collapsedSize={0}
+              defaultSize="23%"
+              minSize="15%"
+              maxSize="35%"
+              onResize={(panelSize) => setAiCollapsed(panelSize.asPercentage === 0)}
+            >
+              <aside className={`${styles.aiPanel} ${aiCollapsed ? styles.aiPanelCollapsed : ''}`}>
+                <div className={styles.aiPanelContent}>
+                  <AiWorkspace
+                    aiState={aiState}
+                    lastCommand={lastCommand}
+                    prompt={prompt}
+                    onSelectChip={handleSelectChip}
+                    onKeep={() => {
+                      setAiAffected([]);
+                      announce('AI edit kept');
+                    }}
+                    onUndo={() => {
+                      setAiState('idle');
+                      setAiAffected([]);
+                      announce('AI edit undone');
+                    }}
+                    onPreview={() => {
+                      setPlayhead(0);
+                      setPlaying(true);
+                    }}
+                    onCollapse={toggleAiCollapse}
+                  />
+                  <PromptComposer
+                    prompt={prompt}
+                    setPrompt={setPrompt}
+                    textareaRef={composerTextareaRef}
+                    processing={aiState === 'processing'}
+                    onSubmit={() => submitPrompt()}
+                    onAdd={chooseFiles}
+                    onFeedback={announce}
+                  />
+                </div>
+              </aside>
+            </ResizablePanel>
 
-            <div className={styles.timelineBody}>
-              <div className={styles.trackLabels}>
-                <div className={styles.rulerSpacer} />
-                <TrackLabel
-                  icon={<Film size={14} />}
-                  label="Video 1"
-                  kind="video"
-                  enabled={videoTrackVisible}
-                  onToggle={() => setVideoTrackVisible((current) => !current)}
-                />
-                <TrackLabel
-                  icon={<Music2 size={14} />}
-                  label="Audio 1"
-                  kind="audio"
-                  enabled={!muted}
-                  onToggle={() => setMuted((current) => !current)}
-                />
-              </div>
-              <div className={styles.timelineScroll}>
-                <div
-                  className={styles.timelineCanvas}
-                  style={{
-                    '--timeline-width': `${Math.max(1080, Math.max(90, projectDuration) * pxPerSecond + 120)}px`,
-                    '--minor-grid': `${pxPerSecond}px`,
-                    '--major-grid': `${pxPerSecond * 5}px`,
-                  } as CSSProperties}
-                >
-                  <TimelineRuler duration={Math.max(90, projectDuration)} pxPerSecond={pxPerSecond} />
-                  <div
-                    ref={timelineRef}
-                    className={`${styles.videoTrack} ${videoTrackVisible ? '' : styles.trackDimmed}`}
-                    onClick={seekTimeline}
-                  >
-                    {clipStarts.map(({ clip, start }) => {
-                      const asset = assets.find((item) => item.id === clip.assetId);
-                      return (
-                        <TimelineClipCard
-                          key={clip.id}
-                          clip={clip}
-                          asset={asset}
-                          start={start}
-                          pxPerSecond={pxPerSecond}
-                          selected={selectedClipId === clip.id}
-                          active={activeClipInfo?.clip.id === clip.id}
-                          aiAffected={aiAffected.includes(clip.id)}
-                          onSelect={() => {
-                            setSelectedClipId(clip.id);
-                            if (asset) setSelectedAssetId(asset.id);
-                          }}
-                          onDropClip={(sourceId) => reorderClip(sourceId, clip.id)}
-                        />
-                      );
-                    })}
-                    {!clips.length && (
-                      <span className={styles.timelineEmptyLabel}>Drag media here to start editing</span>
-                    )}
-                  </div>
-                  <div className={`${styles.audioTrack} ${muted ? styles.trackDimmed : ''}`}>
-                    {clipStarts.map(({ clip, start }) => (
-                      <div
-                        key={`audio-${clip.id}`}
-                        className={`${styles.audioClip} ${aiAffected.includes(clip.id) ? styles.clipAiAffected : ''}`}
-                        style={{
-                          left: `${start * pxPerSecond}px`,
-                          width: `${Math.max(74, clip.duration * pxPerSecond)}px`,
+            <ResizableHandle className={styles.resizeHandle} />
+
+            <ResizablePanel defaultSize="77%" minSize="65%">
+              <ResizablePanelGroup orientation="vertical" className={styles.rightWorkspace}>
+                <ResizablePanel defaultSize="66%" minSize="45%">
+                  <ResizablePanelGroup orientation="horizontal" className={styles.topWorkspace}>
+                    <ResizablePanel defaultSize="34%" minSize="20%" maxSize="48%">
+                      <section
+                        className={`${styles.assetsPanel} ${assetsDrawerOpen ? styles.assetsDrawerOpen : ''}`}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          setDraggingMedia(true);
                         }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDragLeave={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDraggingMedia(false);
+                        }}
+                        onDrop={handleMediaDrop}
                       >
-                        <div className={styles.waveform} aria-hidden="true">
-                          {WAVEFORM.map((height, index) => (
-                            <span key={index} style={{ height: `${height}%` }} />
-                          ))}
+                        <div className={styles.panelHeader}>
+                          <div className={styles.tabs} role="tablist" aria-label="Media views">
+                            {[
+                              ['assets', 'My Assets'],
+                              ['library', 'Library'],
+                              ...(assets.length ? [['transcript', 'Transcript']] : []),
+                            ].map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === value}
+                                className={activeTab === value ? styles.tabActive : ''}
+                                onClick={() => setActiveTab(value as typeof activeTab)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {activeTab === 'transcript' ? (
+                          <TranscriptPanel
+                            query={transcriptSearch}
+                            setQuery={setTranscriptSearch}
+                            lines={filteredTranscript}
+                            activeId={activeTranscriptId}
+                            onSeek={(time) => {
+                              setPlayhead(time);
+                              announce(`Playhead moved to ${formatTime(time)}`);
+                            }}
+                          />
+                        ) : activeTab === 'library' ? (
+                          <LibraryPanel onUse={(promptValue) => submitPrompt(promptValue)} />
+                        ) : (
+                          <>
+                            <div className={styles.assetTools}>
+                              <label className={styles.searchField}>
+                                <Search size={14} />
+                                <input
+                                  value={assetSearch}
+                                  onChange={(event) => setAssetSearch(event.target.value)}
+                                  placeholder="Search media"
+                                />
+                                {assetSearch && (
+                                  <button
+                                    type="button"
+                                    className={styles.clearSearchButton}
+                                    onClick={() => setAssetSearch('')}
+                                    aria-label="Clear search"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </label>
+                              <IconButton label="Import media" onClick={chooseFiles}>
+                                <Upload size={14} />
+                              </IconButton>
+                              <IconButton label="New folder" onClick={() => announce('Folder created')}>
+                                <FolderOpen size={14} />
+                              </IconButton>
+                              <div className={styles.viewToggleGroup}>
+                                <button
+                                  type="button"
+                                  aria-label="Grid view"
+                                  className={`${styles.viewToggleButton} ${assetView === 'grid' ? styles.viewToggleActive : ''}`}
+                                  onClick={() => setAssetView('grid')}
+                                >
+                                  <Grid2X2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="List view"
+                                  className={`${styles.viewToggleButton} ${assetView === 'list' ? styles.viewToggleActive : ''}`}
+                                  onClick={() => setAssetView('list')}
+                                >
+                                  <List size={14} />
+                                </button>
+                              </div>
+                              <IconButton label="Filter assets" onClick={() => announce('Showing all videos')}>
+                                <SlidersHorizontal size={14} />
+                              </IconButton>
+                            </div>
+
+                            {uploadError && (
+                              <div className={styles.inlineError} role="alert">
+                                <CircleHelp size={14} />
+                                <span>{uploadError}</span>
+                                <IconButton label="Dismiss error" onClick={() => setUploadError('')}>
+                                  <X size={13} />
+                                </IconButton>
+                              </div>
+                            )}
+
+                            <div className={`${styles.assetList} ${assetView === 'list' ? styles.assetListRows : ''} ${!assets.length ? styles.assetListEmpty : ''}`}>
+                              {filteredAssets.map((asset) => (
+                                <AssetCard
+                                  key={asset.id}
+                                  asset={asset}
+                                  selected={selectedAssetId === asset.id}
+                                  view={assetView}
+                                  onSelect={() => {
+                                    setSelectedAssetId(asset.id);
+                                    setVideoLoading(true);
+                                  }}
+                                  onPreviewFullscreen={() => previewAssetFullscreen(asset.id)}
+                                  onAdd={() => addAssetToTimeline(asset.id)}
+                                  onRemove={() => setPendingDeleteAssetId(asset.id)}
+                                />
+                              ))}
+                              {!assets.length ? (
+                                <div
+                                  className={`${styles.emptyAssetsState} ${draggingMedia ? styles.assetDropzoneDragOver : ''}`}
+                                  onClick={chooseFiles}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  <FolderOpen size={32} className={styles.emptyAssetsIcon} />
+                                  <span className={styles.emptyAssetsTitle}>This bin is empty</span>
+                                  <span className={styles.emptyAssetsSubtitle}>Import media or drag clips here.</span>
+                                </div>
+                              ) : !filteredAssets.length ? (
+                                <div className={styles.emptyAssets}>
+                                  <Search size={18} />
+                                  <p>No media matches “{assetSearch}”</p>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {draggingMedia && (
+                              <div className={styles.dropOverlay}>
+                                <Upload size={22} />
+                                <strong>Drop to add media</strong>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </section>
+                    </ResizablePanel>
+
+                    <ResizableHandle className={styles.resizeHandle} />
+
+                    <ResizablePanel defaultSize="66%" minSize="45%">
+                      <section
+                        className={`${styles.viewerPanel} ${draggingMedia ? styles.viewerPanelDragging : ''}`}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          setDraggingMedia(true);
+                        }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDragLeave={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDraggingMedia(false);
+                        }}
+                        onDrop={handleMediaDrop}
+                      >
+                        <div className={styles.viewerToolbar}>
+                          <div className={styles.viewerTitle}>
+                            <span>Preview</span>
+                            <small>{activeAsset ? '1920 × 1080' : ''}</small>
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Open clip attributes"
+                            disabled={!activeAsset}
+                            className={`${styles.attributeButton} ${inspectorOpen ? styles.attributeButtonActive : ''}`}
+                            onClick={() => setInspectorOpen((current) => !current)}
+                          >
+                            <SlidersHorizontal size={13} /> Attributes
+                          </button>
+                        </div>
+
+                        <div className={styles.viewerStage}>
+                          {activeAsset ? (
+                            <>
+                              <video
+                                ref={videoRef}
+                                key={activeAsset.id}
+                                src={activeAsset.url}
+                                muted={muted}
+                                playsInline
+                                preload="auto"
+                                onLoadStart={() => setVideoLoading(true)}
+                                onLoadedMetadata={(event) => {
+                                  setVideoLoading(false);
+                                  updateAssetDuration(activeAsset.id, event.currentTarget.duration);
+                                }}
+                                onLoadedData={() => setVideoLoading(false)}
+                                onCanPlay={() => setVideoLoading(false)}
+                                onEnded={() => setPlaying(false)}
+                                className={fitMode === 'fit' ? styles.videoFit : styles.videoOriginal}
+                              />
+                              {videoLoading && (
+                                <div className={styles.viewerLoading}>
+                                  <Loader2 size={19} />
+                                  <span>Preparing preview</span>
+                                </div>
+                              )}
+
+                              <div className={styles.viewerOverlay}>
+                                <button
+                                  type="button"
+                                  className={styles.overlayModeButton}
+                                  onClick={() => setFitMode((current) => (current === 'fit' ? 'original' : 'fit'))}
+                                  aria-label="Toggle preview sizing"
+                                >
+                                  <ImageIcon size={14} />
+                                  <span>{fitMode === 'fit' ? 'Fit' : 'Original'}</span>
+                                </button>
+                                <IconButton label={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted((current) => !current)}>
+                                  {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                                </IconButton>
+                                <input
+                                  aria-label="Preview volume"
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.01"
+                                  value={muted ? 0 : volume}
+                                  onChange={(event) => {
+                                    setMuted(false);
+                                    setVolume(Number(event.target.value));
+                                  }}
+                                  className={styles.overlayVolumeSlider}
+                                />
+                                <IconButton
+                                  label="Fullscreen preview"
+                                  onClick={() => {
+                                    const stage = videoRef.current?.parentElement;
+                                    if (stage?.requestFullscreen) void stage.requestFullscreen();
+                                  }}
+                                >
+                                  <Maximize2 size={14} />
+                                </IconButton>
+                              </div>
+                            </>
+                          ) : (
+                            <div className={styles.viewerEmptyState} onClick={chooseFiles} role="button" tabIndex={0}>
+                              <div className={styles.viewerDropCard}>
+                                <Upload size={22} className={styles.viewerDropIcon} />
+                                <span>Upload media here</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {inspectorOpen && activeAsset && (
+                            <div className={styles.inspector}>
+                              <div className={styles.inspectorHeader}>
+                                <span>Clip attributes</span>
+                                <IconButton label="Close attributes" onClick={() => setInspectorOpen(false)}>
+                                  <X size={13} />
+                                </IconButton>
+                              </div>
+                              <AttributeRow label="Position" value="0, 0" />
+                              <AttributeRow label="Scale" value="100%" />
+                              <AttributeRow label="Rotation" value="0°" />
+                              <AttributeRow label="Opacity" value="100%" />
+                              <button type="button" className={styles.resetAttributes} onClick={() => announce('Attributes reset')}>
+                                <RotateCcw size={12} /> Reset
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    </ResizablePanel>
+
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+
+                <ResizableHandle className={styles.resizeHandle} />
+
+                <ResizablePanel defaultSize="32%" minSize="24%" maxSize="55%">
+                  <section
+                    className={`${styles.timelinePanel} ${timelineDropActive ? styles.timelineDropActive : ''}`}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setTimelineDropActive(true);
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node)) setTimelineDropActive(false);
+                    }}
+                    onDrop={dropOnTimeline}
+                  >
+                    <div className={styles.timelineHeader}>
+                      <div className={styles.timelineTools}>
+                        <IconButton label="Add media" onClick={chooseFiles}><Plus size={15} /></IconButton>
+                        <IconButton label="Selection tool" active><Cursor size={15} /></IconButton>
+                        <IconButton label="Split clip" onClick={() => announce('Split tool ready at the playhead')}>
+                          <EditorGlyph name="split" size={14} />
+                        </IconButton>
+                        <IconButton label="Snapping"><EditorGlyph name="snapping" size={14} /></IconButton>
+                        <IconButton
+                          label="Add subtitles"
+                          onClick={() => submitPrompt('Add word-perfect subtitles to video')}
+                        >
+                          <EditorGlyph name="captions" size={14} />
+                        </IconButton>
+                        <IconButton label="Record voiceover"><Microphone size={15} /></IconButton>
+                        <span className={styles.toolbarDivider} />
+                        <span className={styles.clipCount}>{clips.length} {clips.length === 1 ? 'clip' : 'clips'}</span>
+                        {aiAffected.length > 0 && <span className={styles.aiTimelineStatus}><Sparkles size={12} /> AI edit</span>}
+                      </div>
+                      <div className={styles.timelineTransport}>
+                        <IconButton label="Previous frame" onClick={() => setPlayhead(Math.max(0, playhead - 1 / 30))}><SkipBack size={14} /></IconButton>
+                        <IconButton label={playing ? 'Pause' : 'Play'} onClick={togglePlayback}>{playing ? <Pause size={15} /> : <Play size={15} />}</IconButton>
+                        <IconButton label="Next frame" onClick={() => setPlayhead(Math.min(playbackDuration, playhead + 1 / 30))}><SkipForward size={14} /></IconButton>
+                        <span className={styles.timecode}>{formatTime(playhead)} <i>/</i> {formatTime(playbackDuration)}</span>
+                      </div>
+                      <div className={styles.timelineActions}>
+                        <IconButton label="Delete selected clip" disabled={!selectedClipId} onClick={deleteSelectedClip}>
+                          <Trash2 size={14} />
+                        </IconButton>
+                        <span className={styles.toolbarDivider} />
+                        <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.65, current - 0.15))}>
+                          <ZoomOut size={14} />
+                        </IconButton>
+                        <input
+                          aria-label="Timeline zoom"
+                          type="range"
+                          min="0.65"
+                          max="2"
+                          step="0.05"
+                          value={zoom}
+                          onChange={(event) => setZoom(Number(event.target.value))}
+                        />
+                        <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(2, current + 0.15))}>
+                          <ZoomIn size={14} />
+                        </IconButton>
+                        <span className={styles.zoomPercent}>{Math.round(zoom * 100)}%</span>
+                      </div>
+                    </div>
+
+                    <div className={styles.timelineBody}>
+                      <div className={styles.trackLabels}>
+                        <div className={styles.rulerSpacer} />
+                        <TrackLabel
+                          icon={<Film size={14} />}
+                          label="Video 1"
+                          kind="video"
+                          enabled={videoTrackVisible}
+                          onToggle={() => setVideoTrackVisible((current) => !current)}
+                        />
+                        <TrackLabel
+                          icon={<Music2 size={14} />}
+                          label="Audio 1"
+                          kind="audio"
+                          enabled={!muted}
+                          onToggle={() => setMuted((current) => !current)}
+                        />
+                      </div>
+                      <div className={styles.timelineScroll}>
+                        <div
+                          className={styles.timelineCanvas}
+                          style={{
+                            '--timeline-width': `${Math.max(1080, Math.max(90, projectDuration) * pxPerSecond + 120)}px`,
+                            '--minor-grid': `${pxPerSecond}px`,
+                            '--major-grid': `${pxPerSecond * 5}px`,
+                          } as CSSProperties}
+                        >
+                          <TimelineRuler duration={Math.max(90, projectDuration)} pxPerSecond={pxPerSecond} />
+                          <div
+                            ref={timelineRef}
+                            className={`${styles.videoTrack} ${videoTrackVisible ? '' : styles.trackDimmed}`}
+                            onClick={seekTimeline}
+                          >
+                            {clipStarts.map(({ clip, start }) => {
+                              const asset = assets.find((item) => item.id === clip.assetId);
+                              return (
+                                <TimelineClipCard
+                                  key={clip.id}
+                                  clip={clip}
+                                  asset={asset}
+                                  start={start}
+                                  pxPerSecond={pxPerSecond}
+                                  selected={selectedClipId === clip.id}
+                                  active={activeClipInfo?.clip.id === clip.id}
+                                  aiAffected={aiAffected.includes(clip.id)}
+                                  onSelect={() => {
+                                    setSelectedClipId(clip.id);
+                                    if (asset) setSelectedAssetId(asset.id);
+                                  }}
+                                  onDropClip={(sourceId) => reorderClip(sourceId, clip.id)}
+                                />
+                              );
+                            })}
+                            {!clips.length && (
+                              <span className={styles.timelineEmptyLabel}>Drag media here to start editing</span>
+                            )}
+                          </div>
+                          <div className={`${styles.audioTrack} ${muted ? styles.trackDimmed : ''}`}>
+                            {clipStarts.map(({ clip, start }) => (
+                              <div
+                                key={`audio-${clip.id}`}
+                                className={`${styles.audioClip} ${aiAffected.includes(clip.id) ? styles.clipAiAffected : ''}`}
+                                style={{
+                                  left: `${start * pxPerSecond}px`,
+                                  width: `${Math.max(74, clip.duration * pxPerSecond)}px`,
+                                }}
+                              >
+                                <div className={styles.waveform} aria-hidden="true">
+                                  {WAVEFORM.map((height, index) => (
+                                    <span key={index} style={{ height: `${height}%` }} />
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {selectedClipId && <div className={styles.snappingGuide} aria-hidden="true" />}
+                          <div
+                            className={styles.playhead}
+                            style={{ left: `${Math.min(playhead, projectDuration) * pxPerSecond}px` }}
+                          >
+                            <span />
+                            <time>{formatTime(playhead)}</time>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  {selectedClipId && <div className={styles.snappingGuide} aria-hidden="true" />}
-                  <div
-                    className={styles.playhead}
-                    style={{ left: `${Math.min(playhead, projectDuration) * pxPerSecond}px` }}
-                  >
-                    <span />
-                    <time>{formatTime(playhead)}</time>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+                    </div>
+                  </section>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </ResizablePanel>
+          </ResizablePanelGroup>
 
-        {aiDrawerOpen && (
-          <div className={styles.drawerBackdrop} onMouseDown={() => setAiDrawerOpen(false)}>
-            <aside className={styles.aiDrawer} onMouseDown={(event) => event.stopPropagation()}>
-              <div className={styles.drawerTitle}>
-                <span><Sparkles size={15} /> Craon AI</span>
-                <IconButton label="Close AI assistant" onClick={() => setAiDrawerOpen(false)}>
-                  <X size={15} />
-                </IconButton>
-              </div>
-              <AiWorkspace
-                aiState={aiState}
-                lastCommand={lastCommand}
-                onStarter={(value) => submitPrompt(value)}
-                onKeep={() => {
-                  setAiAffected([]);
-                  setAiDrawerOpen(false);
-                }}
-                onUndo={() => {
-                  setAiState('idle');
-                  setAiAffected([]);
-                }}
-                onPreview={() => {
-                  setPlayhead(0);
-                  setPlaying(true);
-                  setAiDrawerOpen(false);
-                }}
-              />
-              <PromptComposer
-                prompt={prompt}
-                setPrompt={setPrompt}
-                processing={aiState === 'processing'}
-                onSubmit={() => submitPrompt()}
-                onAdd={chooseFiles}
-                onFeedback={announce}
-              />
-            </aside>
-          </div>
-        )}
-
-        <Dialog.Root
-          open={exportOpen}
-          onOpenChange={(open) => {
-            if (!exporting) setExportOpen(open);
-          }}
-        >
-          <Dialog.Portal>
-            <Dialog.Overlay className={styles.modalBackdrop} />
-            <Dialog.Content className={styles.exportModal} aria-describedby="export-description">
-              <div className={styles.modalHeader}>
-                <div>
-                  <span className={styles.panelEyebrow}>Delivery</span>
-                  <Dialog.Title id="export-title" className={styles.dialogTitle}>Export video</Dialog.Title>
+          {aiDrawerOpen && (
+            <div className={styles.drawerBackdrop} onMouseDown={() => setAiDrawerOpen(false)}>
+              <aside className={styles.aiDrawer} onMouseDown={(event) => event.stopPropagation()}>
+                <div className={styles.drawerTitle}>
+                  <span><Sparkles size={15} /> Craon AI</span>
+                  <IconButton label="Close AI assistant" onClick={() => setAiDrawerOpen(false)}>
+                    <X size={15} />
+                  </IconButton>
                 </div>
-                <IconButton label="Close export" disabled={exporting} onClick={() => setExportOpen(false)}>
-                  <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.5} />
-                </IconButton>
-              </div>
-              <div className={styles.exportPreview}>
-                <video src={activeAsset?.url} muted preload="metadata" />
-                <div>
-                  <strong>{projectName}</strong>
-                  <span>{formatTime(projectDuration)} · 16:9</span>
-                </div>
-              </div>
-              <div className={styles.exportOptions}>
-                <label>
-                  <span>Format</span>
-                  <select defaultValue="mp4">
-                    <option value="mp4">MP4 · H.264</option>
-                    <option value="mov">MOV · ProRes</option>
-                    <option value="webm">WebM · VP9</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Resolution</span>
-                  <select defaultValue="1080">
-                    <option value="1080">1080p</option>
-                    <option value="2160">4K</option>
-                    <option value="720">720p</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Frame rate</span>
-                  <select defaultValue="30">
-                    <option value="30">30 fps</option>
-                    <option value="24">24 fps</option>
-                    <option value="60">60 fps</option>
-                  </select>
-                </label>
-              </div>
-              {(exporting || exportProgress === 100) && (
-                <div className={styles.exportProgress}>
-                  <div>
-                    <span>{exportProgress === 100 ? 'Preview ready' : 'Preparing local export preview'}</span>
-                    <strong>{exportProgress}%</strong>
-                  </div>
-                  <span className={styles.progressTrack}>
-                    <i style={{ width: `${exportProgress}%` }} />
-                  </span>
-                </div>
-              )}
-              <div className={styles.modalFooter}>
-                <span id="export-description">No files leave your device in this prototype.</span>
-                <ShadcnButton
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  disabled={exporting}
-                  className={styles.exportConfirm}
-                  onClick={startExport}
-                >
-                  <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.5} />
-                  {exporting ? 'Exporting' : exportProgress === 100 ? 'Ready' : 'Export preview'}
-                </ShadcnButton>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-
-        <Dialog.Root
-          open={Boolean(pendingDeleteAsset)}
-          onOpenChange={(open) => {
-            if (!open) setPendingDeleteAssetId(null);
-          }}
-        >
-          <Dialog.Portal>
-            <Dialog.Overlay className={styles.modalBackdrop} />
-            <Dialog.Content className={`${styles.exportModal} ${styles.deleteAssetModal}`}>
-              <div className={styles.modalHeader}>
-                <div>
-                  <span className={styles.panelEyebrow}>Media library</span>
-                  <Dialog.Title className={styles.dialogTitle}>Delete asset?</Dialog.Title>
-                </div>
-                <IconButton label="Close confirmation" onClick={() => setPendingDeleteAssetId(null)}>
-                  <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.5} />
-                </IconButton>
-              </div>
-              <Dialog.Description className={styles.deleteDescription}>
-                This will remove <strong>{pendingDeleteAsset?.name}</strong> and any timeline items
-                using it. This action cannot be undone.
-              </Dialog.Description>
-              <div className={`${styles.modalFooter} ${styles.deleteModalFooter}`}>
-                <ShadcnButton
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={styles.cancelDelete}
-                  onClick={() => setPendingDeleteAssetId(null)}
-                >
-                  Cancel
-                </ShadcnButton>
-                <ShadcnButton
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  className={styles.confirmDelete}
-                  onClick={() => {
-                    if (pendingDeleteAssetId) removeAsset(pendingDeleteAssetId);
-                    setPendingDeleteAssetId(null);
+                <AiWorkspace
+                  aiState={aiState}
+                  lastCommand={lastCommand}
+                  prompt={prompt}
+                  onSelectChip={handleSelectChip}
+                  onKeep={() => {
+                    setAiAffected([]);
+                    setAiDrawerOpen(false);
                   }}
-                >
-                  <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.5} />
-                  Delete
-                </ShadcnButton>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-
-        {toast && (
-          <div className={styles.toast} role="status">
-            <Check size={14} />
-            {toast}
-          </div>
-        )}
-
-        <div className={styles.helpDock}>
-          {helpOpen && (
-            <div className={styles.helpMenu} role="menu" aria-label="Help options">
-              <button type="button" role="menuitem" onClick={() => { announce('Feedback form opened'); setHelpOpen(false); }}>
-                <MessageCircle size={15} />
-                Feedback
-              </button>
-              <button type="button" role="menuitem" onClick={() => { announce('Feature requests opened'); setHelpOpen(false); }}>
-                <CircleHelp size={15} />
-                Feature requests
-              </button>
-              <button type="button" role="menuitem" onClick={() => { announce('Contact support opened'); setHelpOpen(false); }}>
-                <Microphone size={15} />
-                Contact support
-              </button>
+                  onUndo={() => {
+                    setAiState('idle');
+                    setAiAffected([]);
+                  }}
+                  onPreview={() => {
+                    setPlayhead(0);
+                    setPlaying(true);
+                    setAiDrawerOpen(false);
+                  }}
+                />
+                <PromptComposer
+                  prompt={prompt}
+                  setPrompt={setPrompt}
+                  processing={aiState === 'processing'}
+                  onSubmit={() => submitPrompt()}
+                  onAdd={chooseFiles}
+                  onFeedback={announce}
+                />
+              </aside>
             </div>
           )}
-          <button
-            type="button"
-            className={styles.helpButton}
-            aria-label="Editor help"
-            aria-expanded={helpOpen}
-            onClick={() => setHelpOpen((current) => !current)}
+
+          <Dialog.Root
+            open={exportOpen}
+            onOpenChange={(open) => {
+              if (!exporting) setExportOpen(open);
+            }}
           >
-            <CircleHelp size={18} />
-          </button>
+            <Dialog.Portal>
+              <Dialog.Overlay className={styles.modalBackdrop} />
+              <Dialog.Content className={styles.exportModal} aria-describedby="export-description">
+                <div className={styles.modalHeader}>
+                  <div>
+                    <span className={styles.panelEyebrow}>Delivery</span>
+                    <Dialog.Title id="export-title" className={styles.dialogTitle}>Export video</Dialog.Title>
+                  </div>
+                  <IconButton label="Close export" disabled={exporting} onClick={() => setExportOpen(false)}>
+                    <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.5} />
+                  </IconButton>
+                </div>
+                <div className={styles.exportPreview}>
+                  <video src={activeAsset?.url} muted preload="metadata" />
+                  <div>
+                    <strong>{projectName}</strong>
+                    <span>{formatTime(projectDuration)} · 16:9</span>
+                  </div>
+                </div>
+                <div className={styles.exportOptions}>
+                  <label>
+                    <span>Format</span>
+                    <select defaultValue="mp4">
+                      <option value="mp4">MP4 · H.264</option>
+                      <option value="mov">MOV · ProRes</option>
+                      <option value="webm">WebM · VP9</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Resolution</span>
+                    <select defaultValue="1080">
+                      <option value="1080">1080p</option>
+                      <option value="2160">4K</option>
+                      <option value="720">720p</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Frame rate</span>
+                    <select defaultValue="30">
+                      <option value="30">30 fps</option>
+                      <option value="24">24 fps</option>
+                      <option value="60">60 fps</option>
+                    </select>
+                  </label>
+                </div>
+                {(exporting || exportProgress === 100) && (
+                  <div className={styles.exportProgress}>
+                    <div>
+                      <span>{exportProgress === 100 ? 'Preview ready' : 'Preparing local export preview'}</span>
+                      <strong>{exportProgress}%</strong>
+                    </div>
+                    <span className={styles.progressTrack}>
+                      <i style={{ width: `${exportProgress}%` }} />
+                    </span>
+                  </div>
+                )}
+                <div className={styles.modalFooter}>
+                  <span id="export-description">No files leave your device in this prototype.</span>
+                  <ShadcnButton
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={exporting}
+                    className={styles.exportConfirm}
+                    onClick={startExport}
+                  >
+                    <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.5} />
+                    {exporting ? 'Exporting' : exportProgress === 100 ? 'Ready' : 'Export preview'}
+                  </ShadcnButton>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+
+          <Dialog.Root
+            open={Boolean(pendingDeleteAsset)}
+            onOpenChange={(open) => {
+              if (!open) setPendingDeleteAssetId(null);
+            }}
+          >
+            <Dialog.Portal>
+              <Dialog.Overlay className={styles.modalBackdrop} />
+              <Dialog.Content className={`${styles.exportModal} ${styles.deleteAssetModal}`}>
+                <div className={styles.modalHeader}>
+                  <div>
+                    <span className={styles.panelEyebrow}>Media library</span>
+                    <Dialog.Title className={styles.dialogTitle}>Delete asset?</Dialog.Title>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.modalCloseButton}
+                    aria-label="Close confirmation"
+                    onClick={() => setPendingDeleteAssetId(null)}
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.5} />
+                  </button>
+                </div>
+                <Dialog.Description className={styles.deleteDescription}>
+                  This will remove <strong>{pendingDeleteAsset?.name}</strong> and any timeline items
+                  using it. This action cannot be undone.
+                </Dialog.Description>
+                <div className={`${styles.modalFooter} ${styles.deleteModalFooter}`}>
+                  <ShadcnButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={styles.cancelDelete}
+                    onClick={() => setPendingDeleteAssetId(null)}
+                  >
+                    Cancel
+                  </ShadcnButton>
+                  <ShadcnButton
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className={styles.confirmDelete}
+                    onClick={() => {
+                      if (pendingDeleteAssetId) removeAsset(pendingDeleteAssetId);
+                      setPendingDeleteAssetId(null);
+                    }}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.5} />
+                    Delete
+                  </ShadcnButton>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+
+          {toast && (
+            <div className={styles.toast} role="status">
+              <Check size={14} />
+              {toast}
+            </div>
+          )}
+
+          <div className={styles.helpDock}>
+            {helpOpen && (
+              <div className={styles.helpMenu} role="menu" aria-label="Help options">
+                <button type="button" role="menuitem" onClick={() => { announce('Feedback form opened'); setHelpOpen(false); }}>
+                  <MessageCircle size={15} />
+                  Feedback
+                </button>
+                <button type="button" role="menuitem" onClick={() => { announce('Feature requests opened'); setHelpOpen(false); }}>
+                  <CircleHelp size={15} />
+                  Feature requests
+                </button>
+                <button type="button" role="menuitem" onClick={() => { announce('Contact support opened'); setHelpOpen(false); }}>
+                  <Microphone size={15} />
+                  Contact support
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className={styles.helpButton}
+              aria-label="Editor help"
+              aria-expanded={helpOpen}
+              onClick={() => setHelpOpen((current) => !current)}
+            >
+              <CircleHelp size={18} />
+            </button>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
     </Tooltip.Provider>
   );
 }
@@ -1519,93 +1780,137 @@ export default function VideoEditor() {
 function AiWorkspace({
   aiState,
   lastCommand,
-  onStarter,
+  prompt,
+  onSelectChip,
   onKeep,
   onUndo,
   onPreview,
-  onCollapse,
+  onHistory,
 }: {
   aiState: 'idle' | 'processing' | 'complete';
   lastCommand: string;
-  onStarter: (value: string) => void;
+  prompt: string;
+  onSelectChip: (text: string) => void;
   onKeep: () => void;
   onUndo: () => void;
   onPreview: () => void;
   onCollapse?: () => void;
+  onHistory?: () => void;
 }) {
+  const showEmptyState = aiState === 'idle' && !prompt.trim();
+
   return (
     <div className={styles.aiWorkspace}>
       <div className={styles.aiHeader}>
-        <span><Sparkles size={14} /> AI</span>
-        <div>
-          {onCollapse && (
-            <IconButton label="Collapse AI panel" onClick={onCollapse}>
-              <CaretLeft size={15} />
-            </IconButton>
-          )}
-          <IconButton label="AI session options">
-            <MoreHorizontal size={15} />
+        <div className={styles.aiHeaderTitle}>
+          <span>AI</span>
+        </div>
+        <div className={styles.aiHeaderActions}>
+          <IconButton label="Edit history" onClick={onHistory}>
+            <History size={15} />
           </IconButton>
         </div>
       </div>
 
-      {aiState === 'idle' && (
-        <div className={styles.aiOnboarding}>
-          <div className={styles.aiIntro}>
-            <h2>Start an edit</h2>
-          </div>
-          <div className={styles.starterGrid}>
-            {STARTER_ACTIONS.map(({ title, copy }) => (
-              <button key={title} type="button" onClick={() => onStarter(title)}>
-                <span>
-                  <strong>{title}</strong>
-                  <small>{copy}</small>
-                </span>
-                <ChevronRight size={13} />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className={styles.aiContentBody}>
+        {showEmptyState && (
+          <div className={styles.aiEmptyStateContainer}>
+            <div className={styles.aiEmptyStateGroup}>
+              <svg
+                width="36"
+                height="26"
+                viewBox="0 0 36 26"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className={styles.waveformIllustration}
+              >
+                <rect x="0" y="8" width="2" height="10" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="4" y="4" width="2" height="18" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="8" y="10" width="2" height="6" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="12" y="2" width="2" height="22" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="16" y="12" width="4" height="2" rx="1" fill="var(--editor-accent)" />
+                <rect x="22" y="3" width="2" height="20" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="26" y="9" width="2" height="8" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="30" y="6" width="2" height="14" rx="1" fill="rgba(255,255,255,0.34)" />
+                <rect x="34" y="10" width="2" height="6" rx="1" fill="rgba(255,255,255,0.34)" />
+              </svg>
 
-      {aiState === 'processing' && (
-        <div className={styles.aiConversation}>
-          <div className={styles.userMessage}>{lastCommand}</div>
-          <div className={styles.aiProcessing}>
-            <span className={styles.processingIcon}><Loader2 size={15} /></span>
-            <div>
-              <strong>Craon is shaping the edit</strong>
-              <span>Reading pacing, dialogue, and shot changes</span>
-              <i />
-            </div>
-          </div>
-        </div>
-      )}
+              <h2 className={styles.aiEmptyHeading}>What are we editing today?</h2>
+              <p className={styles.aiEmptyDescription}>
+                Upload footage or describe the result you want.
+              </p>
 
-      {aiState === 'complete' && (
-        <div className={styles.aiConversation}>
-          <div className={styles.userMessage}>{lastCommand}</div>
-          <div className={styles.aiResult}>
-            <div className={styles.resultTitle}>
-              <span><Check size={14} /></span>
-              <div>
-                <strong>Edit complete</strong>
-                <small>Timeline changes are highlighted</small>
+              <div className={styles.aiSuggestionChips}>
+                <button
+                  type="button"
+                  className={styles.aiChip}
+                  onClick={() => onSelectChip('Remove pauses')}
+                >
+                  Remove pauses
+                </button>
+                <button
+                  type="button"
+                  className={styles.aiChip}
+                  onClick={() => onSelectChip('Add subtitles')}
+                >
+                  Add subtitles
+                </button>
+                <button
+                  type="button"
+                  className={styles.aiChip}
+                  onClick={() => onSelectChip('Make a short')}
+                >
+                  Make a short
+                </button>
               </div>
             </div>
-            <ul>
-              <li><span>Removed</span><strong>4 pauses</strong></li>
-              <li><span>Added</span><strong>26 subtitle segments</strong></li>
-              <li><span>Sequence</span><strong>28 seconds</strong></li>
-            </ul>
-            <div className={styles.resultActions}>
-              <button type="button" onClick={onPreview}><Play size={12} /> Preview changes</button>
-              <button type="button" onClick={onKeep}><Check size={12} /> Keep</button>
-              <button type="button" onClick={onUndo}><Undo2 size={12} /> Undo</button>
+          </div>
+        )}
+
+        {aiState === 'processing' && (
+          <div className={styles.aiConversation}>
+            <div className={styles.userMessage}>{lastCommand}</div>
+            <div className={styles.aiProcessing}>
+              <span className={styles.processingIcon}><Loader2 size={15} /></span>
+              <div>
+                <strong>Craon is shaping the edit</strong>
+                <span>Reading pacing, dialogue, and shot changes</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {aiState === 'complete' && (() => {
+          const summary = getAiEditSummary(lastCommand);
+          return (
+            <div className={styles.aiConversation}>
+              <div className={styles.userMessage}>{lastCommand}</div>
+              <div className={styles.aiResult}>
+                <div className={styles.resultTitle}>
+                  <span><Check size={14} /></span>
+                  <div>
+                    <strong>{summary.title}</strong>
+                    <small>{summary.subtitle}</small>
+                  </div>
+                </div>
+                <ul>
+                  {summary.stats.map((s, i) => (
+                    <li key={i}>
+                      <span>{s.label}</span>
+                      <strong>{s.value}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <div className={styles.resultActions}>
+                  <button type="button" onClick={onPreview}><Play size={12} /> Preview changes</button>
+                  <button type="button" onClick={onKeep}><Check size={12} /> Keep</button>
+                  <button type="button" onClick={onUndo}><Undo2 size={12} /> Undo</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }
@@ -1613,6 +1918,7 @@ function AiWorkspace({
 function PromptComposer({
   prompt,
   setPrompt,
+  textareaRef,
   processing,
   onSubmit,
   onAdd,
@@ -1620,22 +1926,47 @@ function PromptComposer({
 }: {
   prompt: string;
   setPrompt: (value: string) => void;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
   processing: boolean;
   onSubmit: () => void;
   onAdd: () => void;
   onFeedback: (value: string) => void;
 }) {
+  const [mode, setMode] = useState<'Edit' | 'Ask' | 'Plan'>('Edit');
+  const [modeOpen, setModeOpen] = useState(false);
+  const [modePos, setModePos] = useState<{ top: number; left: number } | null>(null);
+  const modeBtnRef = useRef<HTMLButtonElement>(null);
+
+  const toggleModeMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!modeOpen && modeBtnRef.current) {
+      const rect = modeBtnRef.current.getBoundingClientRect();
+      const menuWidth = 140;
+      const left = Math.max(10, Math.min(window.innerWidth - menuWidth - 12, rect.left));
+      const top = Math.max(10, rect.top - 125);
+      setModePos({ top, left });
+    }
+    setModeOpen((prev) => !prev);
+  };
+
+  const handleSelectMode = (selectedMode: 'Edit' | 'Ask' | 'Plan') => {
+    setMode(selectedMode);
+    setModeOpen(false);
+    onFeedback(`Mode set to ${selectedMode}`);
+  };
+
   return (
     <form
-      className={styles.composer}
+      className={styles.composerCard}
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
       }}
     >
       <label>
-        <span className={styles.srOnly}>Tell Craon what changes to make</span>
+        <span className={styles.srOnly}>Describe to Craon how you want your edit</span>
         <textarea
+          ref={textareaRef}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
@@ -1644,30 +1975,77 @@ function PromptComposer({
               onSubmit();
             }
           }}
-          placeholder="Tell Craon what changes to make"
+          placeholder="Describe to Craon how you want your edit"
           rows={3}
         />
       </label>
-      <div className={styles.composerFooter}>
-        <div>
-          <IconButton label="Add reference media" onClick={onAdd}><Plus size={15} /></IconButton>
-          <button type="button" className={styles.agentSelect} onClick={() => onFeedback('Craon Edit agent selected')}>
-            <Sparkles size={12} /> Edit <ChevronDown size={11} />
+      <div className={styles.composerBottomBar}>
+        <div className={styles.composerLeftControls}>
+          <button
+            type="button"
+            ref={modeBtnRef}
+            className={styles.composerModeBtn}
+            onClick={toggleModeMenu}
+          >
+            {mode === 'Edit' && <Pencil size={13} className={styles.modeIcon} />}
+            {mode === 'Ask' && <Sparkles size={13} className={styles.modeIcon} />}
+            {mode === 'Plan' && <EditorGlyph name="recipe" size={13} className={styles.modeIcon} />}
+            <span>{mode}</span>
+            <ChevronDown size={11} />
           </button>
-          <IconButton label="Prompt settings" onClick={() => onFeedback('Prompt controls are ready')}>
-            <SlidersHorizontal size={14} />
+          <IconButton label="Add media here" onClick={onAdd}>
+            <ImageIcon size={15} />
           </IconButton>
-          <IconButton label="Reference media" onClick={onAdd}><ImageIcon size={14} /></IconButton>
+          <IconButton label="Edit parameters" onClick={() => onFeedback('Parameters panel ready')}>
+            <SlidersHorizontal size={15} />
+          </IconButton>
+          <IconButton label="Edit recipes" onClick={() => onFeedback('Recipes library ready')}>
+            <EditorGlyph name="recipe" size={15} />
+          </IconButton>
         </div>
-        <IconButton
-          type="submit"
-          label={processing ? 'Craon is processing' : 'Send instruction'}
-          className={styles.sendButton}
-          disabled={!prompt.trim() || processing}
-        >
-          {processing ? <Loader2 size={15} /> : <Send size={15} />}
-        </IconButton>
+        <div className={styles.composerRightControls}>
+          <button
+            type="submit"
+            aria-label={processing ? 'Craon is processing' : 'Send instruction'}
+            className={styles.composerSendBtn}
+            disabled={!prompt.trim() || processing}
+          >
+            {processing ? <Loader2 size={15} /> : (
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <path d="M3.5 9.5L7.5 5.5L11.5 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
+
+      {modeOpen && modePos && createPortal(
+        <>
+          <div className={styles.menuBackdrop} onClick={(e) => { e.stopPropagation(); setModeOpen(false); }} />
+          <div
+            className={styles.modeDropdownMenuPortal}
+            style={{
+              position: 'fixed',
+              top: `${modePos.top}px`,
+              left: `${modePos.left}px`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(['Edit', 'Ask', 'Plan'] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`${styles.modeDropdownItem} ${mode === item ? styles.modeDropdownActive : ''}`}
+                onClick={() => handleSelectMode(item)}
+              >
+                <span>{item}</span>
+                {mode === item && <Check size={14} className={styles.modeCheckIcon} />}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
     </form>
   );
 }
@@ -1677,6 +2055,7 @@ function AssetCard({
   selected,
   view,
   onSelect,
+  onPreviewFullscreen,
   onAdd,
   onRemove,
 }: {
@@ -1684,9 +2063,29 @@ function AssetCard({
   selected: boolean;
   view: 'grid' | 'list';
   onSelect: () => void;
+  onPreviewFullscreen: () => void;
   onAdd: () => void;
   onRemove: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  const toggleMenu = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!menuOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const menuWidth = 210;
+      let left = rect.right + 6;
+      if (left + menuWidth > window.innerWidth - 12) {
+        left = Math.max(10, rect.left - menuWidth - 6);
+      }
+      const top = Math.max(10, Math.min(window.innerHeight - 270, rect.top - 4));
+      setMenuPos({ top, left });
+    }
+    setMenuOpen((prev) => !prev);
+  };
+
   return (
     <article
       className={`${styles.assetCard} ${selected ? styles.assetSelected : ''} ${view === 'list' ? styles.assetRow : ''}`}
@@ -1696,7 +2095,7 @@ function AssetCard({
         event.dataTransfer.setData('application/craon-asset', asset.id);
       }}
     >
-      <button type="button" className={styles.assetMain} onClick={onSelect}>
+      <button type="button" className={styles.assetMain} onClick={onSelect} onDoubleClick={onPreviewFullscreen}>
         <span className={styles.assetThumb}>
           <video src={asset.url} muted preload="metadata" playsInline />
           <span className={styles.assetShade} />
@@ -1714,20 +2113,118 @@ function AssetCard({
         </span>
       </button>
       <div className={styles.assetHoverActions}>
-        {selected && asset.status === 'Ready' ? (
-          <button type="button" className={styles.assetAddAction} onClick={onAdd}>
-            <Plus size={13} />
-            <span>Add to timeline</span>
-          </button>
-        ) : (
-          <IconButton label="Add to timeline" onClick={onAdd} disabled={asset.status !== 'Ready'}>
-            <Plus size={13} />
-          </IconButton>
-        )}
-        <IconButton label="Remove asset" onClick={onRemove}>
-          <Trash2 size={13} />
+        <IconButton label="Add clip to timeline" onClick={onAdd}>
+          <Plus size={13} />
         </IconButton>
+        <IconButton label="Preview asset in fullscreen" onClick={onPreviewFullscreen}>
+          <Maximize2 size={13} />
+        </IconButton>
+        <div className={styles.assetMenuWrapper} ref={triggerRef}>
+          <IconButton label="More options" onClick={toggleMenu}>
+            <MoreVertical size={13} />
+          </IconButton>
+        </div>
       </div>
+
+      {menuOpen && menuPos && createPortal(
+        <>
+          <div className={styles.menuBackdrop} onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+          <div
+            className={styles.assetDropdownMenuPortal}
+            style={{
+              position: 'fixed',
+              top: `${menuPos.top}px`,
+              left: `${menuPos.left}px`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.assetDropdownHeader}>{asset.name}</div>
+            <button
+              type="button"
+              className={styles.assetDropdownItem}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewFullscreen();
+                setMenuOpen(false);
+              }}
+            >
+              <Maximize2 size={14} />
+              <span>Preview Fullscreen</span>
+            </button>
+            <button
+              type="button"
+              className={styles.assetDropdownItem}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd();
+                setMenuOpen(false);
+              }}
+              disabled={asset.status !== 'Ready'}
+            >
+              <Plus size={14} />
+              <span>Add to Timeline</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.assetDropdownItem} ${styles.assetDropdownDisabled}`}
+              disabled
+            >
+              <Music2 size={14} />
+              <span>AI multicam sync</span>
+            </button>
+            <button
+              type="button"
+              className={styles.assetDropdownItem}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+              }}
+            >
+              <Sparkles size={14} />
+              <span>Add LUT</span>
+              <ChevronRight size={13} className={styles.dropdownSubChevron} />
+            </button>
+            <div className={styles.assetDropdownDivider} />
+            <button
+              type="button"
+              className={styles.assetDropdownItem}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+              }}
+            >
+              <Download size={14} />
+              <span>Download</span>
+            </button>
+            <button
+              type="button"
+              className={styles.assetDropdownItem}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+              }}
+            >
+              <Pencil size={14} />
+              <span>Rename</span>
+            </button>
+            <div className={styles.assetDropdownDivider} />
+            <button
+              type="button"
+              className={`${styles.assetDropdownItem} ${styles.assetDropdownDanger}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+                setMenuOpen(false);
+              }}
+            >
+              <Trash2 size={14} />
+              <span>Delete Asset</span>
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
+
       {asset.status !== 'Ready' && (
         <span className={styles.assetProgress}>
           <i className={

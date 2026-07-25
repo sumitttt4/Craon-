@@ -5,7 +5,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: var(--font-geist-sans), "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color-scheme: dark;
 
   /* Official Craon Brand Colors */
@@ -16,7 +15,7 @@
   --brushed-metal: #c8c8c8;
   --background: #101110;
   --foreground: #f1f1ec;
-  --card: #191a18;
+  --card: #151615;
   --card-foreground: #f1f1ec;
   --popover: #1a1b19;
   --popover-foreground: #f1f1ec;
@@ -53,6 +52,7 @@ html {
   scroll-padding-top: 4.5rem;
   background-color: #080808;
   color: var(--bleached-silk);
+  font-family: var(--font-geist-sans), sans-serif;
 }
 
 body {
@@ -64,22 +64,20 @@ body {
   overflow-y: auto;
   min-height: 100dvh;
   width: 100%;
+  font-family: var(--font-geist-sans), sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* Custom font utilities */
-.font-serif {
-  font-family: var(--font-geist-sans), "Segoe UI", system-ui, sans-serif;
+.font-sans,
+.font-serif,
+.font-condensed {
+  font-family: var(--font-geist-sans), sans-serif;
 }
 
 .font-mono {
-  font-family: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
-}
-
-.font-condensed {
-  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-  font-stretch: condensed;
+  font-family: var(--font-geist-mono), monospace;
 }
 
 /* Custom scrollbar matching Craon Sooty & Dover Grey palette */

@@ -1,6 +1,5 @@
 /* oxlint-disable react/only-export-components */
 import type { Metadata } from 'next';
-import '@fontsource-variable/inter';
 
 export const metadata: Metadata = {
   title: 'Craon Studio | AI Video Editor',
