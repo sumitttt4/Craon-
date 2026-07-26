@@ -138,6 +138,7 @@ const Undo2 = makeHugeIcon(ArrowUpLeft01Icon);
 const Upload = makeHugeIcon(Upload01Icon);
 const Music2 = makeHugeIcon(AudioWaveformIcon);
 const X = makeHugeIcon(Cancel01Icon);
+const Layers = makeHugeIcon(Layers01Icon);
 
 type AssetStatus = 'Ready' | 'Reading file' | 'Generating preview' | 'Extracting audio';
 
@@ -167,7 +168,17 @@ type TimelineClip = {
   id: string;
   assetId: string;
   duration: number;
+  start: number;
+  track: number;
 };
+
+const TIMELINE_ZOOM_MIN = 0.05;
+const TIMELINE_ZOOM_MAX = 2.5;
+const TIMELINE_ZOOM_STEP = 0.05;
+
+function clampTimelineZoom(value: number) {
+  return Number(Math.min(TIMELINE_ZOOM_MAX, Math.max(TIMELINE_ZOOM_MIN, value)).toFixed(2));
+}
 
 type TranscriptLine = {
   id: string;
@@ -393,7 +404,9 @@ export default function VideoEditor() {
     if (!assets.length && activeTab === 'transcript') setActiveTab('assets');
   }, [activeTab, assets.length]);
   const [playhead, setPlayhead] = useState(0);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(TIMELINE_ZOOM_MIN);
+  const [videoTrackCount, setVideoTrackCount] = useState(1);
+  const [selectedVideoTrack, setSelectedVideoTrack] = useState(1);
   const [viewerState, setViewerState] = useState<ViewerState>({ assetId: null, status: 'idle' });
   const [previousPreview, setPreviousPreview] = useState<ViewerPreview | null>(null);
   const [draggingMedia, setDraggingMedia] = useState(false);
@@ -416,12 +429,12 @@ export default function VideoEditor() {
   const [timelineDropActive, setTimelineDropActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
   const activeViewerRef = useRef<{ assetId: string | null; url: string | null }>({ assetId: null, url: null });
   const lastReadyPreviewRef = useRef<ViewerPreview | null>(null);
   const previousPreviewRef = useRef<ViewerPreview | null>(null);
   const viewerFallbackTimerRef = useRef<number | null>(null);
   const viewerCrossfadeTimerRef = useRef<number | null>(null);
-  const timelineRef = useRef<HTMLDivElement>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
   const processingTimersRef = useRef<number[]>([]);
@@ -490,18 +503,18 @@ export default function VideoEditor() {
   const lastFrameRef = useRef(0);
 
   const projectDuration = useMemo(
-    () => clips.reduce((total, clip) => total + clip.duration, 0),
+    () => clips.reduce((latest, clip) => Math.max(latest, clip.start + clip.duration), 0),
     [clips],
   );
 
   const clipStarts = useMemo(() => {
-    let cursor = 0;
-    return clips.map((clip) => {
-      const start = cursor;
-      cursor += clip.duration;
-      return { clip, start, end: cursor };
-    });
+    return clips.map((clip) => ({ clip, start: clip.start, end: clip.start + clip.duration }));
   }, [clips]);
+
+  const videoTracks = useMemo(
+    () => Array.from({ length: videoTrackCount }, (_, index) => videoTrackCount - index),
+    [videoTrackCount],
+  );
 
   const activeClipInfo = useMemo(
     () =>
@@ -518,6 +531,13 @@ export default function VideoEditor() {
   const activeAssetId = activeAsset?.id ?? null;
   const activeAssetUrl = activeAsset?.url ?? null;
   activeViewerRef.current = { assetId: activeAssetId, url: activeAssetUrl };
+  const previousReadyAssetId = previousPreview?.assetId ?? lastReadyPreviewRef.current?.assetId;
+  const shouldHoldPreviousFrame = Boolean(
+    activeAsset &&
+    previousReadyAssetId &&
+    previousReadyAssetId !== activeAsset.id &&
+    !(viewerState.assetId === activeAsset.id && viewerState.status === 'ready'),
+  );
 
   const playbackDuration = projectDuration || activeAsset?.duration || 0;
   const pendingDeleteAsset = assets.find((asset) => asset.id === pendingDeleteAssetId);
@@ -748,6 +768,8 @@ export default function VideoEditor() {
                     id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                     assetId,
                     duration: readyAsset.duration,
+                    start: currentClips.reduce((latest, clip) => Math.max(latest, clip.start + clip.duration), 0),
+                    track: 1,
                   };
                   const next = [...currentClips, newClip];
                   pushHistory(next);
@@ -869,7 +891,7 @@ export default function VideoEditor() {
   }, []);
 
   const addAssetToTimeline = useCallback(
-    (assetId: string) => {
+    (assetId: string, track = selectedVideoTrack, start = projectDuration) => {
       const asset = assets.find((item) => item.id === assetId);
       if (!asset) return;
       if (asset.status !== 'Ready') {
@@ -884,7 +906,11 @@ export default function VideoEditor() {
         id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         assetId,
         duration: asset.duration,
+        start: Math.max(0, start),
+        track,
       };
+      setVideoTrackCount((current) => Math.max(current, track));
+      setSelectedVideoTrack(track);
       setClips((current) => {
         const next = [...current, clip];
         pushHistory(next);
@@ -894,7 +920,7 @@ export default function VideoEditor() {
       setPlayhead(projectDuration);
       announce('Clip added to the timeline');
     },
-    [announce, assets, projectDuration, pushHistory],
+    [announce, assets, projectDuration, pushHistory, selectedVideoTrack],
   );
 
   const removeAsset = (assetId: string) => {
@@ -950,11 +976,15 @@ export default function VideoEditor() {
       id: `clip-${Date.now()}-1`,
       assetId: clip.assetId,
       duration: Number(splitTime.toFixed(2)),
+      start: clip.start,
+      track: clip.track,
     };
     const rightClip: TimelineClip = {
       id: `clip-${Date.now()}-2`,
       assetId: clip.assetId,
       duration: Number((clip.duration - splitTime).toFixed(2)),
+      start: clip.start + splitTime,
+      track: clip.track,
     };
     setClips((current) => {
       const index = current.findIndex((item) => item.id === clip.id);
@@ -979,6 +1009,8 @@ export default function VideoEditor() {
       id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       assetId: target.assetId,
       duration: target.duration,
+      start: target.start + target.duration,
+      track: target.track,
     };
     setClips((current) => {
       const index = current.findIndex((clip) => clip.id === selectedClipId);
@@ -1036,6 +1068,38 @@ export default function VideoEditor() {
     announce('Clip snapped into position');
   };
 
+  const addVideoTrack = () => {
+    if (videoTrackCount >= 4) {
+      announce('A project can contain up to four video tracks');
+      return;
+    }
+    const nextTrack = videoTrackCount + 1;
+    setVideoTrackCount(nextTrack);
+    setSelectedVideoTrack(nextTrack);
+    announce(`V${nextTrack} added`);
+  };
+
+  const moveClipToTrack = (clipId: string, track: number) => {
+    setVideoTrackCount((current) => Math.max(current, track));
+    setSelectedVideoTrack(track);
+    setClips((current) => {
+      const target = current.find((clip) => clip.id === clipId);
+      if (!target || target.track === track) return current;
+      const next = current.map((clip) => (clip.id === clipId ? { ...clip, track } : clip));
+      pushHistory(next);
+      return next;
+    });
+  };
+
+  const moveSelectedClipToTrack = (track: number) => {
+    if (!selectedClipId) {
+      announce('Select a clip before choosing a video track');
+      return;
+    }
+    moveClipToTrack(selectedClipId, track);
+    announce(`Clip moved to V${track}`);
+  };
+
   const dropOnTimeline = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setTimelineDropActive(false);
@@ -1043,11 +1107,30 @@ export default function VideoEditor() {
     if (assetId) addAssetToTimeline(assetId);
   };
 
+  const dropOnVideoTrack = (event: DragEvent<HTMLDivElement>, track: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const start = Math.max(0, (event.clientX - rect.left) / pxPerSecond);
+    const clipId = event.dataTransfer.getData('application/craon-clip');
+    const assetId = event.dataTransfer.getData('application/craon-asset');
+    if (clipId) {
+      moveClipToTrack(clipId, track);
+      return;
+    }
+    if (assetId) addAssetToTimeline(assetId, track, start);
+  };
+
+  const fitTimelineToContent = () => {
+    if (projectDuration <= 0) return;
+    const viewportWidth = timelineScrollRef.current?.clientWidth ?? 960;
+    setZoom(clampTimelineZoom((viewportWidth - 72) / (projectDuration * 42)));
+  };
+
   const seekTimeline = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current || projectDuration <= 0) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const local = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    setPlayhead((local / rect.width) * projectDuration);
+    if (projectDuration <= 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPlayhead(Math.max(0, Math.min(projectDuration, (event.clientX - rect.left) / pxPerSecond)));
   };
 
   const submitPrompt = (value = prompt) => {
@@ -1475,7 +1558,7 @@ export default function VideoEditor() {
                                   }
                                 }}
                                 onEnded={() => setPlaying(false)}
-                                className={`${fitMode === 'fit' ? styles.videoFit : styles.videoOriginal} ${styles.viewerCurrentVideo} ${viewerState.assetId === activeAsset.id && viewerState.status === 'ready' ? styles.viewerCurrentVideoReady : styles.viewerCurrentVideoLoading}`}
+                                className={`${fitMode === 'fit' ? styles.videoFit : styles.videoOriginal} ${styles.viewerCurrentVideo} ${shouldHoldPreviousFrame ? styles.viewerCurrentVideoLoading : styles.viewerCurrentVideoReady}`}
                               />
                               {previousPreview && previousPreview.assetId !== activeAsset.id && (
                                 <video
@@ -1491,12 +1574,6 @@ export default function VideoEditor() {
                                   }}
                                   className={`${fitMode === 'fit' ? styles.videoFit : styles.videoOriginal} ${styles.viewerPreviousVideo}`}
                                 />
-                              )}
-                              {viewerState.assetId === activeAsset.id && viewerState.status === 'loading' && (
-                                <div className={styles.viewerLoading}>
-                                  <Loader2 size={19} />
-                                  <span>Preparing preview</span>
-                                </div>
                               )}
                               {viewerState.assetId === activeAsset.id && viewerState.status === 'error' && (
                                 <div className={styles.viewerPreviewError}>
@@ -1601,6 +1678,7 @@ export default function VideoEditor() {
                     <div className={styles.timelineHeader}>
                       <div className={styles.timelineTools}>
                         <IconButton label="Add media" onClick={chooseFiles}><Plus size={15} /></IconButton>
+                        <IconButton label="Add video track" onClick={addVideoTrack}><Layers size={14} /></IconButton>
                         <IconButton label="Selection tool" active><Cursor size={15} /></IconButton>
                         <IconButton label="Split clip" onClick={() => announce('Split tool ready at the playhead')}>
                           <EditorGlyph name="split" size={14} />
@@ -1627,20 +1705,45 @@ export default function VideoEditor() {
                         <IconButton label="Delete selected clip" disabled={!selectedClipId} onClick={deleteSelectedClip}>
                           <Trash2 size={14} />
                         </IconButton>
+                        <IconButton
+                          label="Move selected clip up a video track"
+                          disabled={!selectedClipId}
+                          onClick={() => moveSelectedClipToTrack(Math.min(4, (clips.find((clip) => clip.id === selectedClipId)?.track ?? 1) + 1))}
+                        >
+                          <ArrowUp size={14} />
+                        </IconButton>
+                        <IconButton
+                          label="Move selected clip down a video track"
+                          disabled={!selectedClipId || (clips.find((clip) => clip.id === selectedClipId)?.track ?? 1) === 1}
+                          onClick={() => moveSelectedClipToTrack(Math.max(1, (clips.find((clip) => clip.id === selectedClipId)?.track ?? 1) - 1))}
+                        >
+                          <ChevronDown size={14} />
+                        </IconButton>
                         <span className={styles.toolbarDivider} />
-                        <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.65, current - 0.15))}>
+                        <IconButton
+                          label="Zoom out"
+                          disabled={zoom <= TIMELINE_ZOOM_MIN}
+                          onClick={() => setZoom((current) => clampTimelineZoom(current - TIMELINE_ZOOM_STEP))}
+                        >
                           <ZoomOut size={14} />
+                        </IconButton>
+                        <IconButton label="Fit timeline to media" onClick={fitTimelineToContent}>
+                          <Maximize2 size={13} />
                         </IconButton>
                         <input
                           aria-label="Timeline zoom"
                           type="range"
-                          min="0.65"
-                          max="2"
-                          step="0.05"
+                          min={TIMELINE_ZOOM_MIN}
+                          max={TIMELINE_ZOOM_MAX}
+                          step={TIMELINE_ZOOM_STEP}
                           value={zoom}
-                          onChange={(event) => setZoom(Number(event.target.value))}
+                          onChange={(event) => setZoom(clampTimelineZoom(Number(event.target.value)))}
                         />
-                        <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(2, current + 0.15))}>
+                        <IconButton
+                          label="Zoom in"
+                          disabled={zoom >= TIMELINE_ZOOM_MAX}
+                          onClick={() => setZoom((current) => clampTimelineZoom(current + TIMELINE_ZOOM_STEP))}
+                        >
                           <ZoomIn size={14} />
                         </IconButton>
                         <span className={styles.zoomPercent}>{Math.round(zoom * 100)}%</span>
@@ -1648,15 +1751,23 @@ export default function VideoEditor() {
                     </div>
 
                     <div className={styles.timelineBody}>
-                      <div className={styles.trackLabels}>
+                      <div
+                        className={styles.trackLabels}
+                        style={{ gridTemplateRows: `28px repeat(${videoTrackCount}, 96px) 48px` }}
+                      >
                         <div className={styles.rulerSpacer} />
-                        <TrackLabel
-                          icon={<Film size={14} />}
-                          label="Video 1"
-                          kind="video"
-                          enabled={videoTrackVisible}
-                          onToggle={() => setVideoTrackVisible((current) => !current)}
-                        />
+                        {videoTracks.map((track) => (
+                          <TrackLabel
+                            key={track}
+                            icon={<Film size={14} />}
+                            label={`V${track}`}
+                            kind="video"
+                            enabled={videoTrackVisible}
+                            selected={selectedVideoTrack === track}
+                            onSelect={() => setSelectedVideoTrack(track)}
+                            onToggle={() => setVideoTrackVisible((current) => !current)}
+                          />
+                        ))}
                         <TrackLabel
                           icon={<Music2 size={14} />}
                           label="Audio 1"
@@ -1665,45 +1776,51 @@ export default function VideoEditor() {
                           onToggle={() => setMuted((current) => !current)}
                         />
                       </div>
-                      <div className={styles.timelineScroll}>
+                      <div className={styles.timelineScroll} ref={timelineScrollRef}>
                         <div
                           className={styles.timelineCanvas}
                           style={{
                             '--timeline-width': `${Math.max(1080, Math.max(90, projectDuration) * pxPerSecond + 120)}px`,
                             '--minor-grid': `${pxPerSecond}px`,
                             '--major-grid': `${pxPerSecond * 5}px`,
+                            '--timeline-height': `${28 + videoTrackCount * 96 + 48}px`,
                           } as CSSProperties}
                         >
                           <TimelineRuler duration={Math.max(90, projectDuration)} pxPerSecond={pxPerSecond} />
-                          <div
-                            ref={timelineRef}
-                            className={`${styles.videoTrack} ${videoTrackVisible ? '' : styles.trackDimmed}`}
-                            onClick={seekTimeline}
-                          >
-                            {clipStarts.map(({ clip, start }) => {
-                              const asset = assets.find((item) => item.id === clip.assetId);
-                              return (
-                                <TimelineClipCard
-                                  key={clip.id}
-                                  clip={clip}
-                                  asset={asset}
-                                  start={start}
-                                  pxPerSecond={pxPerSecond}
-                                  selected={selectedClipId === clip.id}
-                                  active={activeClipInfo?.clip.id === clip.id}
-                                  aiAffected={aiAffected.includes(clip.id)}
-                                  onSelect={() => {
-                                    setSelectedClipId(clip.id);
-                                    if (asset) setSelectedAssetId(asset.id);
-                                  }}
-                                  onDropClip={(sourceId) => reorderClip(sourceId, clip.id)}
-                                />
-                              );
-                            })}
-                            {!clips.length && (
-                              <span className={styles.timelineEmptyLabel}>Drag media here to start editing</span>
-                            )}
-                          </div>
+                          {videoTracks.map((track) => (
+                            <div
+                              key={track}
+                              className={`${styles.videoTrack} ${videoTrackVisible ? '' : styles.trackDimmed}`}
+                              onClick={seekTimeline}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => dropOnVideoTrack(event, track)}
+                            >
+                              {clipStarts.filter(({ clip }) => clip.track === track).map(({ clip, start }) => {
+                                const asset = assets.find((item) => item.id === clip.assetId);
+                                return (
+                                  <TimelineClipCard
+                                    key={clip.id}
+                                    clip={clip}
+                                    asset={asset}
+                                    start={start}
+                                    pxPerSecond={pxPerSecond}
+                                    selected={selectedClipId === clip.id}
+                                    active={activeClipInfo?.clip.id === clip.id}
+                                    aiAffected={aiAffected.includes(clip.id)}
+                                    onSelect={() => {
+                                      setSelectedClipId(clip.id);
+                                      setSelectedVideoTrack(track);
+                                      if (asset) setSelectedAssetId(asset.id);
+                                    }}
+                                    onDropClip={(sourceId) => reorderClip(sourceId, clip.id)}
+                                  />
+                                );
+                              })}
+                              {!clips.length && track === 1 && (
+                                <span className={styles.timelineEmptyLabel}>Drag media here to start editing</span>
+                              )}
+                            </div>
+                          ))}
                           <div className={`${styles.audioTrack} ${muted ? styles.trackDimmed : ''}`}>
                             {clipStarts.map(({ clip, start }) => (
                               <div
@@ -1711,11 +1828,19 @@ export default function VideoEditor() {
                                 className={`${styles.audioClip} ${aiAffected.includes(clip.id) ? styles.clipAiAffected : ''}`}
                                 style={{
                                   left: `${start * pxPerSecond}px`,
-                                  width: `${Math.max(74, clip.duration * pxPerSecond)}px`,
+                                  width: `${Math.max(72, clip.duration * pxPerSecond)}px`,
                                 }}
                               >
                                 <div className={styles.waveform} aria-hidden="true">
-                                  {WAVEFORM.map((height, index) => (
+                                  {Array.from(
+                                    {
+                                      length: Math.min(
+                                        1200,
+                                        Math.max(WAVEFORM.length, Math.ceil(Math.max(72, clip.duration * pxPerSecond) / 2)),
+                                      ),
+                                    },
+                                    (_, index) => WAVEFORM[index % WAVEFORM.length],
+                                  ).map((height, index) => (
                                     <span key={index} style={{ height: `${height}%` }} />
                                   ))}
                                 </div>
@@ -2549,6 +2674,16 @@ function TimelineClipCard({
   onSelect: () => void;
   onDropClip: (sourceId: string) => void;
 }) {
+  const clipWidth = Math.max(72, clip.duration * pxPerSecond);
+  const thumbnailCount = useMemo(
+    () => Math.min(24, Math.max(1, Math.ceil(clipWidth / 88))),
+    [clipWidth],
+  );
+  const thumbnailFrames = useMemo(
+    () => Array.from({ length: thumbnailCount }, (_, index) => index),
+    [thumbnailCount],
+  );
+
   return (
     <button
       type="button"
@@ -2556,7 +2691,7 @@ function TimelineClipCard({
       className={`${styles.timelineClip} ${selected ? styles.clipSelected : ''} ${active ? styles.clipActive : ''} ${aiAffected ? styles.clipAiAffected : ''}`}
       style={{
         left: `${start * pxPerSecond}px`,
-        width: `${Math.max(84, clip.duration * pxPerSecond)}px`,
+        width: `${clipWidth}px`,
       }}
       onClick={(event) => {
         event.stopPropagation();
@@ -2578,8 +2713,19 @@ function TimelineClipCard({
     >
       <span className={styles.trimHandle} />
       <span className={styles.thumbnailStrip} aria-hidden="true">
-        {Array.from({ length: 6 }, (_, index) => (
-          <video key={index} src={asset?.url} muted preload="metadata" />
+        {asset && thumbnailFrames.map((index) => (
+          <video
+            key={index}
+            src={asset.url}
+            muted
+            preload="metadata"
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+              const frameTime = (video.duration * (index + 0.5)) / thumbnailCount;
+              video.currentTime = Math.min(frameTime, Math.max(0, video.duration - 0.05));
+            }}
+          />
         ))}
       </span>
       <span className={styles.clipOverlay} />
@@ -2598,16 +2744,31 @@ function TrackLabel({
   label,
   kind,
   enabled,
+  selected = false,
+  onSelect,
   onToggle,
 }: {
   icon: ReactNode;
   label: string;
   kind: 'video' | 'audio';
   enabled: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   onToggle: () => void;
 }) {
   return (
-    <div className={styles.trackLabel}>
+    <div
+      className={`${styles.trackLabel} ${selected ? styles.trackLabelSelected : ''}`}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (onSelect && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+    >
       <span>{icon}{label}</span>
       <div className={styles.trackControls}>
         <IconButton label={kind === 'video' ? `${enabled ? 'Hide' : 'Show'} ${label}` : `${enabled ? 'Mute' : 'Unmute'} ${label}`} onClick={onToggle}>

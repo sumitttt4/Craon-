@@ -1960,7 +1960,7 @@
   position: relative;
   width: var(--timeline-width);
   min-width: 100%;
-  height: 100%;
+  height: max(100%, var(--timeline-height, 0px));
   background:
     linear-gradient(90deg, transparent 49.95%, rgba(255, 255, 255, 0.018) 50%, transparent 50.05%);
   background-size: 84px 100%;
@@ -3183,7 +3183,7 @@
 }
 
 .audioTrack {
-  height: 68px;
+  height: 48px;
 }
 
 .timelineClip,
@@ -3200,12 +3200,19 @@
   inset: 0;
   display: flex;
   overflow: hidden;
+  pointer-events: none;
+}
+
+.trackLabelSelected {
+  background: rgba(232, 117, 61, 0.08);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .thumbnailStrip video {
-  width: 96px;
+  width: 0;
   height: 100%;
-  flex: 0 0 96px;
+  min-width: 0;
+  flex: 1 1 0;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   object-fit: cover;
   opacity: 0.82;
@@ -4017,9 +4024,14 @@
 .waveform {
   color: #dd8a61;
   opacity: 0.9;
+  gap: 1px;
+  padding-block: 8px;
 }
 
 .waveform span {
+  width: 1px;
+  min-width: 1px;
+  flex: 1 1 1px;
   background: currentColor;
   box-shadow: 0 0 0 1px rgba(255, 197, 166, 0.06);
 }
